@@ -16,8 +16,6 @@ import gym
 from gym import spaces
 from .house import House
 from .core import Environment, MultiHouseEnv
-from . import objrender
-from .objrender import RenderMode
 
 __all__ = ['RoomNavTask']
 
@@ -131,7 +129,7 @@ class RoomNavTask(gym.Env):
 
         self.discrete_action = discrete_action
         if discrete_action:
-            self._action_space = spaces.Discrete(12)
+            self._action_space = spaces.Discrete(n_discrete_actions)
         else:
             self._action_space = spaces.Tuple([spaces.Box(0, 1, shape=(4,)), spaces.Box(0, 1, shape=(2,))])
 
@@ -422,7 +420,8 @@ class RoomNavTask(gym.Env):
 
 if __name__ == '__main__':
     from .common import load_config
-
+    from . import objrender
+    from .objrender import RenderMode
     api = objrender.RenderAPI(
             w=400, h=300, device=0)
     cfg = load_config('config.json')
