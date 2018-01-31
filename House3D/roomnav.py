@@ -276,7 +276,7 @@ class RoomNavTask(gym.Env):
     gym api: step function
     return: obs, reward, done, info (a dictionary containing some state information)
     """
-    def step(self, action):
+    def step(self, action, return_info=True):
         reward = 0
         det_fwd, det_hor, det_rot = self._apply_action(action)
         move_fwd = det_fwd * self.move_sensitivity
@@ -348,7 +348,7 @@ class RoomNavTask(gym.Env):
             if dep_sig.shape[-1] > 1:
                 dep_sig = dep_sig[..., 0:1]
             obs = np.concatenate([obs, dep_sig], axis=-1)
-        self.last_info = cur_info
+        self.last_info = cur_info if return_info else None
         return obs, reward, done, cur_info
 
     @property
@@ -369,6 +369,9 @@ class RoomNavTask(gym.Env):
         ret['collision'] = int(self.collision_flag)
         ret['target_room'] = self.house.targetRoomTp
         return ret
+
+    def get_current_target(self):
+        return self.house.targetRoomTp
 
     """
     return all the available target room types of the current house
