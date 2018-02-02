@@ -276,7 +276,7 @@ class RoomNavTask(gym.Env):
     gym api: step function
     return: obs, reward, done, info (a dictionary containing some state information)
     """
-    def step(self, action, return_info=True):
+    def step(self, action):
         reward = 0
         det_fwd, det_hor, det_rot = self._apply_action(action)
         move_fwd = det_fwd * self.move_sensitivity
@@ -348,7 +348,7 @@ class RoomNavTask(gym.Env):
             if dep_sig.shape[-1] > 1:
                 dep_sig = dep_sig[..., 0:1]
             obs = np.concatenate([obs, dep_sig], axis=-1)
-        self.last_info = cur_info if return_info else None
+        self.last_info = cur_info
         return obs, reward, done, cur_info
 
     @property
