@@ -194,6 +194,9 @@ class RoomNavTask(gym.Env):
         if target is None:
             desired_target_list = self.house.all_desired_targetTypes if self.include_object_target else self.house.all_desired_roomTypes
             target = random.choice(desired_target_list)
+        elif target == 'any-room':
+            desired_target_list = self.house.all_desired_roomTypes
+            target = random.choice(desired_target_list)
         #else:
         #    assert target in desired_target_list, '[RoomNavTask] desired target <{}> does not exist in the current house!'.format(target)
         if self.house.setTargetRoom(target):  # target room changed!!!
