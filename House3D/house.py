@@ -404,7 +404,7 @@ class House(object):
 
         if flag_room_target:
             self.targetRooms = targetRooms = \
-                [(room['bbox']['min'][0], room['bbox']['min'][2], room['bbox']['max'][0], room['bbox']['min'][2])
+                [(room['bbox']['min'][0], room['bbox']['min'][2], room['bbox']['max'][0], room['bbox']['max'][2])
                  for room in self.all_rooms if any([ _equal_room_tp(tp, targetRoomTp) for tp in room['roomTypes']])]
         else:
             self.targetRooms = targetRooms = \
