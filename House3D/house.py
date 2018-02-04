@@ -534,9 +534,9 @@ class House(object):
     def genTargetObjectList(self, MapTargetCatFile):
         with open(MapTargetCatFile, 'r') as f:
             self.id_to_tar = json.load(f)
-        target_obj = [(obj, self.id_to_tar[obj['model_id']]) for obj in self.all_obj if
+        target_obj = [(obj, self.id_to_tar[obj['modelId']]) for obj in self.all_obj if
                       (obj['bbox']['min'][1] < self.robotHei) and (obj['bbox']['max'][1] > self.carpetHei)
-                      and (obj['model_id'] in self.id_to_tar)]
+                      and (obj['modelId'] in self.id_to_tar)]
         for obj, cat in target_obj:
             _x1, _, _y1 = obj['bbox']['min']
             _x2, _, _y2 = obj['bbox']['max']
