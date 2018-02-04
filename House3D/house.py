@@ -408,7 +408,8 @@ class House(object):
                  for room in self.all_rooms if any([ _equal_room_tp(tp, targetRoomTp) for tp in room['roomTypes']])]
         else:
             self.targetRooms = targetRooms = \
-                [(x1-self.objTargetRange, y1-self.objTargetRange, x2+self.objTargetRange, y2+self.objTargetRange)
+                [(max(x1-self.objTargetRange, self.L_lo), max(y1-self.objTargetRange, self.L_lo),
+                  min(x2+self.objTargetRange, self.L_hi), min(y2+self.objTargetRange, self.L_hi))
                  for x1,y1,x2,y2 in self.tar_obj_region[targetRoomTp]]
         assert (len(targetRooms) > 0), '[House] no target type <{}> in the current house!'.format(targetRoomTp)
         ##########
