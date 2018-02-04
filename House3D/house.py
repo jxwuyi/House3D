@@ -23,9 +23,16 @@ __all__ = ['House']
 # NOTE: consider "toilet" and "bathroom" the same thing
 ALLOWED_TARGET_ROOM_TYPES = ['kitchen', 'dining_room', 'living_room', 'bathroom', 'bedroom']  # 'office'
 
+ALLOWED_OBJECT_TARGET_TYPES = ['shower', 'sofa', 'toilet', 'bed', 'plant', 'television', 'table_and_chair',
+                               'chair', 'table', 'kitchen_set', 'bathtub', 'vehicle', 'pool', 'kitchen_cabinet', 'curtain']
+
 # allowed room types for auxiliary prediction task
 ALLOWED_PREDICTION_ROOM_TYPES = dict(
     outdoor=0, indoor=1, kitchen=2, dining_room=3, living_room=4, bathroom=5, bedroom=6, office=7, storage=8)
+
+ALLOWED_OBJECT_TARGET_INDEX = dict({'curtain': 19, 'plant': 9, 'toilet': 7, 'shower': 5, 'kitchen_set': 14, 'table': 13,
+                                    'bathtub': 15, 'vehicle': 16, 'pool': 17, 'bed': 8, 'chair': 12,
+                                    'kitchen_cabinet': 18, 'table_and_chair': 11, 'television': 10, 'sofa': 6})
 
 def _equal_room_tp(room, target):
     """
@@ -113,6 +120,8 @@ class House(object):
                  RobotRadius=0.1,
                  RobotHeight=0.75,  # 1.0,
                  CarpetHeight=0.15,
+                 MapTargetCatFile=None,
+                 ObjectTargetSuccRange = 1.5,
                  _IgnoreSmallHouse=False  # should be only set true when called by "cache_houses.py"
                  ):
         """Initialization and Robot Parameters
@@ -143,6 +152,7 @@ class House(object):
         self.robotHei = RobotHeight
         self.carpetHei = CarpetHeight
         self.robotRad = RobotRadius
+        self.objTargetRange = ObjectTargetSuccRange
         self._debugMap = None if not DebugInfoOn else True
         with open(JsonFile) as jfile:
             self.house = house = json.load(jfile)
@@ -176,6 +186,16 @@ class House(object):
                 if self.default_roomTp is None: self.default_roomTp = roomTp
         assert self.default_roomTp is not None, 'Cannot Find Any Desired Rooms!'
         print('>> Target Room Type Selected = {}'.format(self.default_roomTp))
+        self.tar_obj_region = dict()
+        self.all_desired_targetObj = []
+        self.id_to_tar = dict()
+        if MapTargetCatFile is not None:
+            print('Preparing Target Object List ...')
+            self.genTargetObjectList(MapTargetCatFile)
+            self.all_desired_targetObj = list(self.tar_obj_region.keys())
+            print('>> Total Target Object Types = <N={}> {}'.format(len(self.all_desired_targetObj),
+                                                                    self.all_desired_targetObj))
+        self.all_desired_targetTypes = self.all_desired_roomTypes + self.all_desired_targetObj
 
         print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
         if _IgnoreSmallHouse and ((len(self.all_desired_roomTypes) < 2) or ('kitchen' not in self.all_desired_roomTypes)):
@@ -365,10 +385,12 @@ class House(object):
 
     """
     set the distance to a particular room type
+    NOTE: Also support object targets
     """
     def setTargetRoom(self, targetRoomTp = 'kitchen', _setEagleMap = False):
         targetRoomTp = targetRoomTp.lower()
-        assert targetRoomTp in ALLOWED_TARGET_ROOM_TYPES, '[House] room type <{}> not supported!'.format(targetRoomTp)
+        if targetRoomTp not in self.all_desired_targetTypes:
+            assert False, '[House] target type <{}> not supported in the current house!'.format(targetRoomTp)
         if targetRoomTp == self.targetRoomTp:
             return False  # room not changed!
         else:
@@ -378,16 +400,23 @@ class House(object):
         if targetRoomTp in self.connMapDict:
             self.connMap, self.connectedCoors, self.inroomDist, self.maxConnDist = self.connMapDict[targetRoomTp]
             return True  # room Changed!
-        self.targetRooms = targetRooms = \
-            [room for room in self.all_rooms if any([ _equal_room_tp(tp, targetRoomTp) for tp in room['roomTypes']])]
-        assert (len(targetRooms) > 0), '[House] no room of type <{}> in the current house!'.format(targetRoomTp)
+        flag_room_target = targetRoomTp in ALLOWED_TARGET_ROOM_TYPES
+
+        if flag_room_target:
+            self.targetRooms = targetRooms = \
+                [(room['bbox']['min'][0], room['bbox']['min'][2], room['bbox']['max'][0], room['bbox']['min'][2])
+                 for room in self.all_rooms if any([ _equal_room_tp(tp, targetRoomTp) for tp in room['roomTypes']])]
+        else:
+            self.targetRooms = targetRooms = \
+                [(x1-self.objTargetRange, y1-self.objTargetRange, x2+self.objTargetRange, y2+self.objTargetRange)
+                 for x1,y1,x2,y2 in self.tar_obj_region[targetRoomTp]]
+        assert (len(targetRooms) > 0), '[House] no target type <{}> in the current house!'.format(targetRoomTp)
         ##########
         # generate destination mask map
         if _setEagleMap:  # TODO: Currently a hack to speedup mult-target learning!!! So eagleMap become *WRONG*!
             self.eagleMap[1, ...] = 0
             for room in self.targetRooms:
-                _x1, _, _y1 = room['bbox']['min']
-                _x2, _, _y2 = room['bbox']['max']
+                _x1, _y1, _x2, _y2 = room
                 x1,y1,x2,y2 = self.rescale(_x1,_y1,_x2,_y2,self.eagleMap.shape[1]-1)
                 self.eagleMap[1, x1:(x2+1), y1:(y2+1)]=1
         print('[House] Caching New ConnMap for Target <{}>! (total {} rooms involved)'.format(targetRoomTp,len(targetRooms)))
@@ -398,8 +427,7 @@ class House(object):
         flag_find_open_components = True
         for _ in range(2):
             for room in targetRooms:
-                _x1, _, _y1 = room['bbox']['min']
-                _x2, _, _y2 = room['bbox']['max']
+                _x1, _y1, _x2, _y2 = room
                 cx, cy = (_x1 + _x2) / 2, (_y1 + _y2) / 2
                 x1,y1,x2,y2 = self.rescale(_x1,_y1,_x2,_y2)
                 curr_components = self._find_components(x1, y1, x2, y2, dirs=dirs, return_open=flag_find_open_components)  # find all the open components
@@ -427,8 +455,8 @@ class House(object):
                 flag_find_open_components = False
             else:
                 break
-            print('WARINING!!!! [House] No Space Found for Room Type {}! Now search even for closed region!!!'.format(targetRoomTp))
-        assert len(que) > 0, "Error!! [House] No space found for room type {}. House ID = {}"\
+            print('WARINING!!!! [House] No Space Found for Target Type {}! Now search even for closed region!!!'.format(targetRoomTp))
+        assert len(que) > 0, "Error!! [House] No space found for target type {}. House ID = {}"\
             .format(targetRoomTp, (self._id if hasattr(self, '_id') else 'NA'))
         ptr = 0
         self.maxConnDist = 1
@@ -496,9 +524,25 @@ class House(object):
     cache the shortest distance to all the possible room types
     """
     def cache_all_target(self):
-        for t in self.all_desired_roomTypes:
+        for t in self.all_desired_targetTypes:
             self.setTargetRoom(t)
         self.setTargetRoom(self.default_roomTp)
+
+    """
+    get the objects available for target
+    """
+    def genTargetObjectList(self, MapTargetCatFile):
+        with open(MapTargetCatFile, 'r') as f:
+            self.id_to_tar = json.load(f)
+        target_obj = [(obj, self.id_to_tar[obj['model_id']]) for obj in self.all_obj if
+                      (obj['bbox']['min'][1] < self.robotHei) and (obj['bbox']['max'][1] > self.carpetHei)
+                      and (obj['model_id'] in self.id_to_tar)]
+        for obj, cat in target_obj:
+            _x1, _, _y1 = obj['bbox']['min']
+            _x2, _, _y2 = obj['bbox']['max']
+            if cat not in self.tar_obj_region:
+                self.tar_obj_region[cat] = []
+            self.tar_obj_region[cat].append((_x1, _y1, _x2, _y2))
 
     def genObstacleMap(self, MetaDataFile, gen_debug_map=True, dest=None, n_row=None):
         # load all the doors

@@ -1,0 +1,16 @@
+coarse_grained_class,r,g,b,target_room
+shower,255,52,255,shower
+sofa,0,137,65,sofa
+toilet,122,73,0,toilet
+bed,254,255,230,bed
+plant,79,198,1,plant
+television,0,194,160,television
+table_and_chair,255,144,201,table_and_chair
+chair,48,0,24,chair
+table,111,0,98,table
+kitchen_set,183,123,104,kitchen_set
+bathtub,255,138,154,bathtub
+vehicle,136,111,76,vehicle
+pool,99,99,117,pool
+kitchen_cabinet,87,83,41,kitchen_cabinet
+curtain,58,36,101,curtain

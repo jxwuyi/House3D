@@ -35,7 +35,7 @@ time_penalty_reward = 0.1   # penalty for each time step
 delta_reward_coef = 0.5
 speed_reward_coef = 1.0
 
-success_distance_range = 1.0
+success_distance_range = 1.5
 success_stay_time_steps = 5
 success_see_target_time_steps = 2   # time steps required for success under the "see" criteria
 
@@ -82,7 +82,8 @@ class RoomNavTask(gym.Env):
                  depth_signal=True,
                  max_steps=-1,
                  success_measure='see',
-                 discrete_action=False):
+                 discrete_action=False,
+                 include_object_target=False):
         """RoomNav task wrapper with gym api
         Note:
             all the settings are the default setting to run a task
@@ -137,6 +138,8 @@ class RoomNavTask(gym.Env):
             np.random.seed(seed)
             random.seed(seed)
 
+        self.include_object_target = include_object_target  # whether to use object targets
+
         # configs
         self.move_sensitivity = (move_sensitivity or default_move_sensitivity)  # at most * meters per frame
         self.rot_sensitivity = rotation_sensitivity
@@ -170,6 +173,8 @@ class RoomNavTask(gym.Env):
         if success_measure == 'see':
             self.room_target_object = dict()
             self._load_target_object_data(self.env.config['roomTargetFile'])
+            if self.include_object_target:
+                self._load_target_object_data(self.env.config['objectTargetFile'])
 
     def _load_target_object_data(self, roomTargetFile):
         with open(roomTargetFile) as csvFile:
@@ -187,9 +192,10 @@ class RoomNavTask(gym.Env):
     """
     def reset_target(self, target=None):
         if target is None:
-            target = random.choice(self.house.all_desired_roomTypes)
-        else:
-            assert target in self.house.all_desired_roomTypes, '[RoomNavTask] desired target <{}> does not exist in the current house!'.format(target)
+            desired_target_list = self.house.all_desired_targetTypes if self.include_object_target else self.house.all_desired_roomTypes
+            target = random.choice(desired_target_list)
+        #else:
+        #    assert target in desired_target_list, '[RoomNavTask] desired target <{}> does not exist in the current house!'.format(target)
         if self.house.setTargetRoom(target):  # target room changed!!!
             _id = self.house._id
             if self.house.targetRoomTp not in self._availCoorsDict[_id]:
@@ -340,7 +346,7 @@ class RoomNavTask(gym.Env):
         # object seen reward
         if (raw_dist == 0) and (self.success_measure == 'see'):  # inside target room and success measure is <see>
             if not done:
-                object_reward = max(0.0, (self._object_cnt - n_pixel_for_object_sense) / L_pixel_reward_range) * pixel_object_reward
+                object_reward = min(1.0, max(0.0, (self._object_cnt - n_pixel_for_object_sense) / L_pixel_reward_range)) * pixel_object_reward
                 reward += object_reward
 
         if self.depth_signal:
