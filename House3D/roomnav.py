@@ -108,7 +108,6 @@ class RoomNavTask(gym.Env):
         self.env = env
         assert isinstance(env, Environment), '[RoomNavTask] env must be an instance of Environment!'
         if env.resolution != (120, 90): reset_see_criteria(env.resolution)
-        self.house = env.house
         self.resolution = resolution = env.resolution
         assert reward_type in [None, 'none', 'linear', 'indicator', 'delta', 'speed']
         self.reward_type = reward_type
@@ -185,6 +184,10 @@ class RoomNavTask(gym.Env):
                 if room not in self.room_target_object:
                     self.room_target_object[room] = []
                 self.room_target_object[room].append(c)
+
+    @property
+    def house(self):
+        return self.env.house
 
     """
     reset the target room type to navigate to
