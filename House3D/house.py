@@ -393,11 +393,10 @@ class House(object):
             assert False, '[House] target type <{}> not supported in the current house!'.format(targetRoomTp)
         if targetRoomTp == self.targetRoomTp:
             return False  # room not changed!
-        else:
-            self.targetRoomTp = targetRoomTp
         ###########
         # Caching
         if targetRoomTp in self.connMapDict:
+            self.targetRoomTp = targetRoomTp
             self.connMap, self.connectedCoors, self.inroomDist, self.maxConnDist = self.connMapDict[targetRoomTp]
             return True  # room Changed!
         flag_room_target = targetRoomTp in ALLOWED_TARGET_ROOM_TYPES
@@ -421,6 +420,7 @@ class House(object):
                 x1,y1,x2,y2 = self.rescale(_x1,_y1,_x2,_y2,self.eagleMap.shape[1]-1)
                 self.eagleMap[1, x1:(x2+1), y1:(y2+1)]=1
         print('[House] Caching New ConnMap for Target <{}>! (total {} rooms involved)'.format(targetRoomTp,len(targetRooms)))
+        backup_connMap, backup_inroomDist = self.connMap, self.inroomDist
         self.connMap = connMap = np.ones((self.n_row+1, self.n_row+1), dtype=np.int32) * -1
         self.inroomDist = inroomDist = np.ones((self.n_row+1, self.n_row+1), dtype=np.float32) * -1
         dirs = [[0, 1], [1, 0], [-1, 0], [0, -1]]
@@ -457,10 +457,18 @@ class House(object):
             else:
                 break
             print('WARINING!!!! [House] No Space Found for Target Type {}! Now search even for closed region!!!'.format(targetRoomTp))
-        assert len(que) > 0, "Error!! [House] No space found for target type {}. House ID = {}"\
-            .format(targetRoomTp, (self._id if hasattr(self, '_id') else 'NA'))
+        #assert len(que) > 0, 
+        if len(que) == 0:
+            errmsg = "Error!! [House] No space found for target type {}. House ID = {}"\
+                     .format(targetRoomTp, (self._id if hasattr(self, '_id') else 'NA'))
+            print(errmsg)
+            print('----> Remove Target Type <{}>'.format(targetRoomTp))
+            self.all_desired_targetTypes.remove(targetRoomTp) # invalid target remove from list 
+            self.connMap = backup_connMap
+            self.inroomDist = backup_inroomDist
+            return False
         ptr = 0
-        self.maxConnDist = 1
+        maxConnDist = 1
         while ptr < len(que):
             x,y = que[ptr]
             cur_dist = connMap[x, y]
@@ -470,9 +478,11 @@ class House(object):
                 if self.inside(tx,ty) and self.canMove(tx,ty) and not self.isConnect(tx, ty):
                     que.append((tx,ty))
                     connMap[tx,ty] = cur_dist + 1
-                    if cur_dist + 1 > self.maxConnDist:
-                        self.maxConnDist = cur_dist + 1
-        self.connMapDict[targetRoomTp] = (connMap, que, inroomDist, self.maxConnDist)
+                    if cur_dist + 1 > maxConnDist:
+                        maxConnDist = cur_dist + 1
+        self.targetRoomTp = targetRoomTp
+        self.maxConnDist = maxConnDist
+        self.connMapDict[targetRoomTp] = (connMap, que, inroomDist, maxConnDist)
         self.connectedCoors = que
         print(' >>>> ConnMap Cached!')
         return True  # room changed!
@@ -525,7 +535,8 @@ class House(object):
     cache the shortest distance to all the possible room types
     """
     def cache_all_target(self):
-        for t in self.all_desired_targetTypes:
+        avail_types = list(self.all_desired_targetTypes)
+        for t in avail_types:
             self.setTargetRoom(t)
         self.setTargetRoom(self.default_roomTp)
 
