@@ -227,6 +227,7 @@ class RoomNavTask(gym.Env):
 
         # reset house
         self.env.reset_house()
+        self.house.targetRoomTp = None  # [NOTE] IMPORTANT! clear this!!!!!
 
         # reset target room
         self.reset_target(target=target)  # randomly reset
