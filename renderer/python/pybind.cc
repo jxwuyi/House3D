@@ -13,6 +13,8 @@
 #include "lib/mat.h"
 #include "lib/timer.hh"
 
+#include "house.hh"
+
 using namespace std;
 using namespace render;
 namespace py = pybind11;
@@ -22,8 +24,7 @@ namespace {
 }
 
 using namespace pybind11::literals;
-PYBIND11_PLUGIN(objrender) {
-  py::module m("objrender", "Obj Renderer");
+PYBIND11_MODULE(objrender, m) {
   py::class_<SUNCGRenderAPI>(m, "RenderAPI")
     // device defaults to 0
     .def(py::init<int, int, int>(), "Initialize", "w"_a, "h"_a, "device"_a=0)
@@ -83,6 +84,9 @@ PYBIND11_PLUGIN(objrender) {
     .value("Down", Camera::Movement::DOWN)
     .export_values();
 
+  py::class_<House>(m, "_House")
+    .def("f", &House::f);
+
   py::class_<glm::vec3>(m, "Vec3")
     .def(py::init<float, float, float>())
     .def(py::self + py::self)
@@ -112,5 +116,4 @@ PYBIND11_PLUGIN(objrender) {
           {sizeof(unsigned char) * m.cols() * m.channels(),
           sizeof(unsigned char) * m.channels(), sizeof(unsigned char)});
       });
-  return m.ptr();
 }

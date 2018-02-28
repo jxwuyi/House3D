@@ -185,10 +185,6 @@ class RoomNavTask(gym.Env):
                     self.room_target_object[room] = []
                 self.room_target_object[room].append(c)
 
-    @property
-    def house(self):
-        return self.env.house
-
     """
     reset the target room type to navigate to
     when target is None, a valid target will be randomly selected
@@ -214,6 +210,10 @@ class RoomNavTask(gym.Env):
                 self._availCoorsDict[_id][self.house.targetRoomTp] = self.availCoors
             else:
                 self.availCoors = self._availCoorsDict[_id][self.house.targetRoomTp]
+
+    @property
+    def house(self):
+        return self.env.house
 
     """
     gym api: reset function
@@ -353,7 +353,7 @@ class RoomNavTask(gym.Env):
         # object seen reward
         if (raw_dist == 0) and (self.success_measure == 'see'):  # inside target room and success measure is <see>
             if not done:
-                object_reward = min(1.0, max(0.0, (self._object_cnt - n_pixel_for_object_sense) / L_pixel_reward_range)) * pixel_object_reward
+                object_reward = np.clip((self._object_cnt - n_pixel_for_object_sense) / L_pixel_reward_range, 0., 1.) * pixel_object_reward
                 reward += object_reward
 
         if self.depth_signal:

@@ -177,10 +177,9 @@ class House(object):
         self.all_obj = [node for node in level['nodes'] if node['type'].lower() == 'object']
         self.all_rooms = [node for node in level['nodes'] if (node['type'].lower() == 'room') and ('roomTypes' in node)]
         self.all_roomTypes = [room['roomTypes'] for room in self.all_rooms]
-        desired_room_types = ALLOWED_TARGET_ROOM_TYPES
         self.all_desired_roomTypes = []
         self.default_roomTp = None
-        for roomTp in desired_room_types:
+        for roomTp in ALLOWED_TARGET_ROOM_TYPES:
             if any([any([_equal_room_tp(tp, roomTp) for tp in tps]) for tps in self.all_roomTypes]):
                 self.all_desired_roomTypes.append(roomTp)
                 if self.default_roomTp is None: self.default_roomTp = roomTp
@@ -500,19 +499,14 @@ class House(object):
         roomTp = roomTp.lower()
         assert roomTp in ALLOWED_TARGET_ROOM_TYPES, '[House] room type <{}> not supported!'.format(roomTp)
         # get list of valid locations within the room bounds
-        locations = None
-        if roomTp in self.roomTypeLocMap:
-            locations = self.roomTypeLocMap[roomTp]
-        else:
-            locations = []
-            rooms = self._getRooms(roomTp)
-            for room in rooms:
-                room_bounds = self._getRoomBounds(room)
-                room_locs = self._find_components(*room_bounds, return_largest=True)
+        locations = []
+        rooms = self._getRooms(roomTp)
+        for room in rooms:
+            room_locs = self._getValidRoomLocations(room)
+            if room_locs and len(room_locs) > 0:
                 locations.extend(room_locs)
-            self.roomTypeLocMap[roomTp] = locations
-        # choose random location
 
+        # choose random location
         result = None
         if len(locations) > 0:
             idx = np.random.choice(len(locations))
@@ -522,13 +516,22 @@ class House(object):
 
 
     def getRandomLocationForRoom(self, room_node):
-        room_bounds = self._getRoomBounds(room_node)
-        room_locs = self._find_components(*room_bounds, return_largest=True)
+        room_locs = self._getValidRoomLocations(room_node)
         if len(room_locs) == 0:
             return None
         idx = np.random.choice(len(room_locs))
         return self.to_coor(room_locs[idx][0], room_locs[idx][1], True)
 
+
+    def _getValidRoomLocations(self, room_node):
+        room_locs = None
+        if room_node['id'] in self.roomTypeLocMap:
+            room_locs = self.roomTypeLocMap[room_node['id']]
+        else:
+            room_bounds = self._getRoomBounds(room_node)
+            room_locs = self._find_components(*room_bounds, return_largest=True)
+            self.roomTypeLocMap[room_node['id']] = room_locs
+        return room_locs
 
 
     """
@@ -633,13 +636,30 @@ class House(object):
             if gen_debug_map and (self._debugMap is not None):
                 fill_region(self._debugMap, x1, y1, x2, y2, 0.8)
 
+
     def genMovableMap(self):
-        for i in range(self.n_row+1):
-            for j in range(self.n_row+1):
+        roi_bounds = self._getRegionsOfInterest()
+        for roi in roi_bounds:
+            self._updateMovableMap(*roi)
+
+
+    def _updateMovableMap(self, x1, y1, x2, y2):
+        for i in range(x1, x2):
+            for j in range(y1, y2):
                 if self.obsMap[i,j] == 0:
                     cx, cy = self.to_coor(i, j, True)
                     if self.check_occupy(cx,cy):
                         self.moveMap[i,j] = 1
+
+
+    def _getRegionsOfInterest(self):
+        """Override this function for customizing the areas of the map to
+        consider when marking valid movable locations
+        Returns a list of (x1, y1, x2, y2) tuples representing bounding boxes
+        of valid areas.  Coordinates are normalized grid coordinates.
+        """
+        return [(0, 0, self.n_row+1, self.n_row+1)]
+
 
     """
     check whether the *grid* coordinate (x,y) is inside the house
