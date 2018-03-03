@@ -14,7 +14,7 @@
 namespace py = pybind11;
 using namespace std;
 
-#define pair<int,int> PII
+#define PII pair<int,int>
 #define mkp(a,b) make_pair(a,b)
 #define X first
 #define Y second
@@ -44,9 +44,9 @@ public:
             cerr << "[C++] <BaseHouse._setObsMap> Input ndarray must be a 2-d squared matrix!" << endl;
             assert(false);
         }
-        int m = val.shape(0)
-        obsMap = py::array_t<int>({m, m}, new int[m * m + 1])
-        for(int i=0;i<m;++i) for(int j=0;j<m;++j) *obsMap.mutable_data(i,j) = *val.data(i,j)
+        int m = val.shape(0);
+        obsMap = py::array_t<int>({m, m}, new int[m * m + 1]);
+        for(int i=0;i<m;++i) for(int j=0;j<m;++j) *obsMap.mutable_data(i,j) = *val.data(i,j);
     }
     // set moveMap from python
     void _setMoveMap(const py::array_t<int>& val) {
@@ -54,9 +54,9 @@ public:
             cerr << "[C++] <BaseHouse._setMoveMap> Input ndarray must be a 2-d squared matrix!" << endl;
             assert(false);
         }
-        int m = val.shape(0)
-        moveMap = py::array_t<int>({m, m}, new int[m * m + 1])
-        for(int i=0;i<m;++i) for(int j=0;j<m;++j) *moveMap.mutable_data(i,j) = *val.data(i,j)
+        int m = val.shape(0);
+        moveMap = py::array_t<int>({m, m}, new int[m * m + 1]);
+        for(int i=0;i<m;++i) for(int j=0;j<m;++j) *moveMap.mutable_data(i,j) = *val.data(i,j);
     }
     // generate obstacle map
     //  -> if retObject is false, return nullptr and store in obsMap
@@ -82,16 +82,19 @@ public:
     // get connMap
     py::array_t<int>* _getConnMap() {return cur_connMap;}
     // get connectedCoors
-    vector<tuple<int,int> >* _getConnCoors() {return cur_connCoors}
+    vector<tuple<int,int> >* _getConnCoors() {return cur_connCoors;}
     // get maxConnDist
     int _getMaxConnDist() {return cur_maxConnDist;}
 };
 
 // find connected components
-vector<PII > BaseHouse::_find_components(int x1, int y1, int x2, int y2, bool return_largest=false, bool return_open=false);
+vector<PII > BaseHouse::_find_components(int x1, int y1, int x2, int y2, bool return_largest, bool return_open) {
+    return vector<PII>({});
+}
 
 // generate obstacle map
-py::array_t<int>* BaseHouse::_genObstacleMap(int n_row, bool retObject=false) {
+py::array_t<int>* BaseHouse::_genObstacleMap(int n_row, bool retObject) {
+    return nullptr;
 }
 
 // generate shortest distance map (connMap)
