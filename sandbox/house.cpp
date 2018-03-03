@@ -5,6 +5,7 @@
 #include<cstdlib>
 #include<cstdio>
 #include<cstring>
+#include<cmath>
 #include<cassert>
 #include<array>
 #include<vector>
@@ -22,21 +23,39 @@ using namespace std;
 #define MKP(a,b) make_pair(a,b)
 #define X first
 #define Y second
+#define BOX_TP tuple<double,double,double,double>
+#define REGION_TP tuple<int,int,int,int>
 #define COMP_TP vector<PII>
 #define COMP_PTR shared_ptr<vector<PII>>
 #define INDEX(x,y,n) ((x) * (n) + (y))
 
+const double eps = 1e-9;
 const int DIRS[4][2] = {{0,1},{1,0},{0,-1},{-1,0}};
+
+template<class T>
+T* _get_mem(int size, int val=0) {
+    T* ptr = new T[size];
+    memset(ptr, val, sizeof(T) * size);
+    return ptr;
+}
+
+template<class T>
+void _fill_region(T* ptr, int n, int x1, int y1, int x2, int y2, int val) {
+    for(int i=x1;i<=x2;++i)
+        for(int j=y1;j<=y2;++j)
+            ptr[INDEX(i,j,n)] = val;
+}
 
 class BaseHouse {
 public:
     py::array_t<int> obsMap, moveMap;
 private:
     int n;
-    vector<py::array_t<int> > connMapLis;
+    double L_lo, L_hi, L_det, grid_det, rad;
+    vector<py::array_t<int> > connMapLis, inroomDistLis;
     vector<vector<tuple<int,int> > > connCoorsLis;
     vector<int> maxConnDistLis;
-    py::array_t<int>* cur_connMap;
+    py::array_t<int>* cur_connMap, cur_inroomDist;
     vector<tuple<int,int> >* cur_connCoors;
     int cur_maxConnDist;
     vector<vector<tuple<int,int> > > regValidCoorsLis;
@@ -45,9 +64,17 @@ private:
     vector<COMP_PTR> _find_components(int x1, int y1, int x2, int y2, bool return_largest=false, bool return_open=false);
 public:
     BaseHouse(int resolution): n(resolution), cur_connMap(nullptr), cur_connCoors(nullptr) {}
+    void _setScale(double _lo, double _hi, double _rad) {
+        L_lo = _lo; L_hi = _hi; rad = _rad;
+        L_det = _hi - _lo; grid_det = L_det / n;
+    }
+
+    //////////////////////////////////
+    // Cache Setter Functions
+    //////////////////////////////////
     // set obsMap from python
     void _setObsMap(const py::array_t<int>& val) {
-        if (val.ndim() != 2 && val.shape(0) == val.shape(1) && val.shape(0) == n) {
+        if (val.ndim() != 2 && val.shape(0) == val.shape(1) && val.shape(0) == n+1) {  // NOTE: n+1!!
             cerr << "[C++] <BaseHouse._setObsMap> Input ndarray must be a 2-d squared matrix!" << endl;
             assert(false);
         }
@@ -57,7 +84,7 @@ public:
     }
     // set moveMap from python
     void _setMoveMap(const py::array_t<int>& val) {
-        if (val.ndim() != 2 && val.shape(0) == val.shape(1) && val.shape(0) == n) {
+        if (val.ndim() != 2 && val.shape(0) == val.shape(1) && val.shape(0) == n + 1) { // NOTE: n+1!!
             cerr << "[C++] <BaseHouse._setMoveMap> Input ndarray must be a 2-d squared matrix!" << endl;
             assert(false);
         }
@@ -65,34 +92,59 @@ public:
         moveMap = py::array_t<int>({m, m}, new int[m * m + 1]);
         for(int i=0;i<m;++i) for(int j=0;j<m;++j) *moveMap.mutable_data(i,j) = *val.data(i,j);
     }
+
+    ///////////////////////////////////
+    // Core Generator Functions
+    ///////////////////////////////////
     // generate obstacle map
     //  -> if retObject is false, return nullptr and store in obsMap
-    py::array_t<int>* _genObstacleMap(int n_row, bool retObject=false);
+    py::array_t<int>* _genObstacleMap(double c_x1, double c_y1, double c_x2, double c_y2, int n_row,
+                                      const BOX_TP& all_walls, const BOX_TP& door_obj, const BOX_TP& colide_obj,
+                                      bool retObject=false);  // TODO
+    // generate movable map
+    void _genMovableMap(const vector<REGION_TP>& regions);
     // compute shortest distance
-    void _genShortestDistMap(const vector<tuple<int,int,int,int>>&regions, const string& tag);
+    //  --> return whether success (if the region has any open area)
+    bool _genShortestDistMap(const vector<tuple<int,int,int,int>>&regions, const string& tag);
+    // compute valid positions in a region
+    vector<tuple<int,int> >* _getValidCoors(int x1, int y1, int x2, int y2, const string& reg_tag);
+
+    /////////////////////////////////////////
+    // Target Setter Functions
+    /////////////////////////////////////////
     // clear and set current distance info
     void _clearCurrentDistMap() {
         cur_connMap = nullptr;
+        cur_inroomDist = nullptr;
         cur_connCoors = nullptr;
         cur_maxConnDist = 0;
     }
-    void _setCurrentDistMap(const string& tag) {
+    bool _setCurrentDistMap(const string& tag) {
         auto iter = targetInd.find(tag);
-        if (iter == targetInd.end()) return ;
+        if (iter == targetInd.end()) return false;
         int k = iter->second;
         cur_connMap = &connMapLis[k];
+        cur_inroomDist = &inroomDistLis[k];
         cur_connCoors = &connCoorsLis[k];
         cur_maxConnDist = maxConnDistLis[k];
+        return true;
     }
-    // compute valid positions in a region
-    vector<tuple<int,int> >* _getValidCoors(int x1, int y1, int x2, int y2, const string& reg_tag);
+
+    ///////////////////////////
+    // Getter Functions
+    ///////////////////////////
     // get connMap
     py::array_t<int>* _getConnMap() {return cur_connMap;}
+    // get inroomDist
+    py::array_t<int>* _getInroomDist() {return cur_inroomDist;}
     // get connectedCoors
     vector<tuple<int,int> >* _getConnCoors() {return cur_connCoors;}
     // get maxConnDist
     int _getMaxConnDist() {return cur_maxConnDist;}
+
+    //////////////////////////////////////////////////
     // range check and utility functions
+    //////////////////////////////////////////////////
     bool _inside(int x, int y) {return x <= n && x >= 0 && y <= n && y >= 0;}
     bool _canMove(int x, int y) {return _inside(x,y) && *moveMap.data(x,y) > 0;}
     bool _isConnect(int x, int y) {return _inside(x, y) && *(*cur_connMap).data(x,y) != -1;}
@@ -101,6 +153,35 @@ public:
         int ret = *(*cur_connMap).data(x,y);
         if (ret < 0) return (double)(ret);
         return (double)(ret) / cur_maxConnDist;
+    }
+    tuple<int,int,int,int> _rescale(double x1, double y1, double x2, double y2, int n_row) {
+        int tx1 = (int)floor((x1 - L_lo) / L_det * n_row+eps);
+        int ty1 = (int)floor((y1 - L_lo) / L_det * n_row+eps);
+        int tx2 = (int)floor((x2 - L_lo) / L_det * n_row+eps);
+        int ty2 = (int)floor((y2 - L_lo) / L_det * n_row+eps);
+        return make_tuple(tx1,ty1,tx2,ty2);
+    }
+    tuple<int,int> _to_grid(double x, double y, int n_row) {
+        int tx = (int)floor((x - L_lo) / L_det * n_row+eps);
+        int ty = (int)floor((y - L_lo) / L_det * n_row+eps);
+        return make_tuple(tx, ty);
+    }
+    tuple<double,double> _to_coor(int x, int y, bool shft) {
+        double tx = x * self.grid_det + self.L_lo;
+        double ty = y * self.grid_det + self.L_lo;
+        if (shft) {
+            tx += 0.5 * self.grid_det;
+            ty += 0.5 * self.grid_det;
+        }
+        return make_tuple(tx, ty);
+    }
+    bool _check_occupy(double cx, double cy) {
+        int x1,y1,x2,y2;
+        tie(x1,y1,x2,y2) = _rescale(cx-rad,cy-rad,cx+rad,cy+rad,n);
+        for(int x=x1;x<=x2;++x)
+            for(int y=y1;y<=y2;++y)
+                if (!_inside(x,y) || *obsMap.data(x,y) == 1) return false;
+        return true;
     }
 };
 
@@ -180,7 +261,7 @@ vector<tuple<int,int> >* BaseHouse::_getValidCoors(int x1, int y1, int x2, int y
         regionInd[reg_tag] = k;
         regValidCoorsLis.push_back(vector<tuple<int,int> >({}));
         auto& coors = regValidCoorsLis[k];
-        auto dat = this->_find_components(x1, y1, x2, y2, true, false);
+        auto dat = _find_components(x1, y1, x2, y2, true, false);
         auto& comp = dat[0]; // the largest components
         for(auto& p: *comp)
             coors.push_back(make_tuple(p.X, p.Y));
@@ -189,12 +270,32 @@ vector<tuple<int,int> >* BaseHouse::_getValidCoors(int x1, int y1, int x2, int y
 }
 
 // generate obstacle map
-py::array_t<int>* BaseHouse::_genObstacleMap(int n_row, bool retObject) {
+py::array_t<int>* BaseHouse::_genObstacleMap(
+    double c_x1, double c_y1, double c_x2, double c_y2, int n_row,
+    const BOX_TP& all_walls, const BOX_TP& door_obj, const BOX_TP& colide_obj,
+    bool retObject=false) {
+    //TODO
     return nullptr;
 }
 
+// generate movable map
+void BaseHouse::_genMovableMap(const vector<REGION_TP>& regions) {
+    int x1,y1,x2,y2;
+    moveMap = py::array_t<int>({n+1, n+1}, _get_mem((n+1) * (n+1) + 1, 0));
+    for(auto& reg: regions) {
+        tie(x1,y1,x2,y2) = reg;
+        for(int x=x1;x<=x2;++x)
+            for(int y=y1;y<=y2;++y) {
+                double cx, cy;
+                tie(cx,cy) = _to_coor(x,y,true);
+                if _check_occupy(cx, cy):
+                    *moveMap.mutable_data(x,y) = 1;
+            }
+    }
+}
+
 // generate shortest distance map (connMap)
-void BaseHouse::_genShortestDistMap(const vector<tuple<int,int,int,int>>&regions, const string& tag) {
+bool BaseHouse::_genShortestDistMap(const vector<tuple<int,int,int,int>>&regions, const string& tag) {
 }
 
 PYBIND11_MODULE(example, m) {
