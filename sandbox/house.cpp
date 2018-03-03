@@ -26,7 +26,7 @@ using namespace std;
 #define COMP_PTR shared_ptr<vector<PII>>
 #define INDEX(x,y,n) ((x) * (n) + (y))
 
-const int dirs[4][2] = {{0,1},{1,0},{0,-1},{-1,0}};
+const int DIRS[4][2] = {{0,1},{1,0},{0,-1},{-1,0}};
 
 class BaseHouse {
 public:
@@ -114,18 +114,18 @@ vector<COMP_PTR> BaseHouse::_find_components(int x1, int y1, int x2, int y2, boo
     for(int x=x1;x<=x2;++x)
         for(int y=y1;y<=y2;++y) {
             int idx = INDEX(x,y,n);
-            if (*moveMap.data(i,j) > 0 && visit.count(INDEX(x,y,n)) == 0) {
+            if (*moveMap.data(x,y) > 0 && visit.count(INDEX(x,y,n)) == 0) {
                 vector<PII> comp;
-                comp.append(MKP(i,j));
+                comp.push_back(MKP(x,y));
                 visit[idx] = k;
-                int ptr = 0;
+                size_t ptr = 0;
                 bool is_open = false;
                 while (ptr < comp.size()) {
                     int px = comp[ptr].X, py = comp[ptr].Y;
                     ptr ++;
                     for (int d = 0; d < 4; ++ d) {
-                        int tx = px + dir[d][0], ty = py + dir[d][1];
-                        if this->_canMove(tx, ty) {
+                        int tx = px + DIRS[d][0], ty = py + DIRS[d][1];
+                        if (_canMove(tx, ty)) {
                             if (tx < x1 || tx > x2 || ty < y1 || ty > y2) {
                                 is_open = true;
                                 continue;
@@ -133,14 +133,14 @@ vector<COMP_PTR> BaseHouse::_find_components(int x1, int y1, int x2, int y2, boo
                             int nxt_idx = INDEX(tx,ty,n);
                             if (visit.count(nxt_idx) == 0) {
                                 visit[nxt_idx] = k;
-                                comp.append(MKP(tx, ty));
+                                comp.push_back(MKP(tx, ty));
                             }
                         }
                     }
                 }
-                if (is_open) open_comps.append(k);
+                if (is_open) open_comps.push_back(k);
                 k ++;
-                all_comps.append(make_shared<COMP_TP>(comp));
+                all_comps.push_back(make_shared<COMP_TP>(comp));
             }
         }
     if (k == 0) return all_comps; // no components found
@@ -151,13 +151,14 @@ vector<COMP_PTR> BaseHouse::_find_components(int x1, int y1, int x2, int y2, boo
         } else {
             vector<COMP_PTR > tmp;
             for (auto i: open_comps)
-                tmp.append(all_comps[i]);
+                tmp.push_back(all_comps[i]);
             all_comps = tmp;
         }
     }
     if (return_largest) {
-        int p = -1, p_sz = -1;
-        for(int i=0;i<all_comps.size();++i)
+        int p = -1;
+        size_t p_sz = 0;
+        for(size_t i=0;i<all_comps.size();++i)
             if(all_comps[i]->size() > p_sz) {
                 p_sz = all_comps[i]->size();
                 p = i;
@@ -169,20 +170,21 @@ vector<COMP_PTR> BaseHouse::_find_components(int x1, int y1, int x2, int y2, boo
 }
 
 // generate valid coors in a region
-vector<tuple<int,int> >* _getValidCoors(int x1, int y1, int x2, int y2, const string& reg_tag) {
+vector<tuple<int,int> >* BaseHouse::_getValidCoors(int x1, int y1, int x2, int y2, const string& reg_tag) {
     auto iter = regionInd.find(reg_tag);
     if (iter != regionInd.end()) {
         int k = iter->second;
         return &regValidCoorsLis[k];
     } else {
-        regionInd[reg_tag] = regValidCoorsLis.size();
+        int k = regValidCoorsLis.size();
+        regionInd[reg_tag] = k;
         regValidCoorsLis.push_back(vector<tuple<int,int> >({}));
-        auto& coors = *regValidCoorsLis.back();
+        auto& coors = regValidCoorsLis[k];
         auto dat = this->_find_components(x1, y1, x2, y2, true, false);
         auto& comp = dat[0]; // the largest components
-        for(auto& p: comp)
-            coors.push_back(make_tuple<int,int>(p.X, p.Y));
-        return *coors;
+        for(auto& p: *comp)
+            coors.push_back(make_tuple(p.X, p.Y));
+        return &regValidCoorsLis[k];
     }
 }
 
