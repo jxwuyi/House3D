@@ -55,7 +55,8 @@ private:
     vector<py::array_t<int> > connMapLis, inroomDistLis;
     vector<vector<tuple<int,int> > > connCoorsLis;
     vector<int> maxConnDistLis;
-    py::array_t<int>* cur_connMap, cur_inroomDist;
+    py::array_t<int>* cur_connMap;
+    py::array_t<int>* cur_inroomDist;
     vector<tuple<int,int> >* cur_connCoors;
     int cur_maxConnDist;
     vector<vector<tuple<int,int> > > regValidCoorsLis;
@@ -167,11 +168,11 @@ public:
         return make_tuple(tx, ty);
     }
     tuple<double,double> _to_coor(int x, int y, bool shft) {
-        double tx = x * self.grid_det + self.L_lo;
-        double ty = y * self.grid_det + self.L_lo;
+        double tx = x * grid_det + L_lo;
+        double ty = y * grid_det + L_lo;
         if (shft) {
-            tx += 0.5 * self.grid_det;
-            ty += 0.5 * self.grid_det;
+            tx += 0.5 * grid_det;
+            ty += 0.5 * grid_det;
         }
         return make_tuple(tx, ty);
     }
@@ -273,7 +274,7 @@ vector<tuple<int,int> >* BaseHouse::_getValidCoors(int x1, int y1, int x2, int y
 py::array_t<int>* BaseHouse::_genObstacleMap(
     double c_x1, double c_y1, double c_x2, double c_y2, int n_row,
     const BOX_TP& all_walls, const BOX_TP& door_obj, const BOX_TP& colide_obj,
-    bool retObject=false) {
+    bool retObject) {
     //TODO
     return nullptr;
 }
@@ -281,14 +282,14 @@ py::array_t<int>* BaseHouse::_genObstacleMap(
 // generate movable map
 void BaseHouse::_genMovableMap(const vector<REGION_TP>& regions) {
     int x1,y1,x2,y2;
-    moveMap = py::array_t<int>({n+1, n+1}, _get_mem((n+1) * (n+1) + 1, 0));
+    moveMap = py::array_t<int>({n+1, n+1}, _get_mem<int>((n+1) * (n+1) + 1, 0));
     for(auto& reg: regions) {
         tie(x1,y1,x2,y2) = reg;
         for(int x=x1;x<=x2;++x)
             for(int y=y1;y<=y2;++y) {
                 double cx, cy;
                 tie(cx,cy) = _to_coor(x,y,true);
-                if _check_occupy(cx, cy):
+                if (_check_occupy(cx, cy))
                     *moveMap.mutable_data(x,y) = 1;
             }
     }
