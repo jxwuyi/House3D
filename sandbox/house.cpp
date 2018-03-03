@@ -11,13 +11,20 @@
 #include<string>
 #include<tuple>
 #include<map>
+#include<set>
+#include<memory>
+#include<queue>
+#include<algorithm>
 namespace py = pybind11;
 using namespace std;
 
 #define PII pair<int,int>
-#define mkp(a,b) make_pair(a,b)
+#define MKP(a,b) make_pair(a,b)
 #define X first
 #define Y second
+#define COMP_TP vector<PII>
+#define COMP_PTR shared_ptr<vector<PII>>
+#define INDEX(x,y,n) ((x) * (n) + (y))
 
 const int dirs[4][2] = {{0,1},{1,0},{0,-1},{-1,0}};
 
@@ -35,7 +42,7 @@ private:
     vector<vector<tuple<int,int> > > regValidCoorsLis;
     map<string, int> targetInd, regionInd;
     // find connected components
-    vector<PII > _find_components(int x1, int y1, int x2, int y2, bool return_largest=false, bool return_open=false);
+    vector<COMP_PTR> _find_components(int x1, int y1, int x2, int y2, bool return_largest=false, bool return_open=false);
 public:
     BaseHouse(int resolution): n(resolution), cur_connMap(nullptr), cur_connCoors(nullptr) {}
     // set obsMap from python
@@ -85,11 +92,98 @@ public:
     vector<tuple<int,int> >* _getConnCoors() {return cur_connCoors;}
     // get maxConnDist
     int _getMaxConnDist() {return cur_maxConnDist;}
+    // range check and utility functions
+    bool _inside(int x, int y) {return x <= n && x >= 0 && y <= n && y >= 0;}
+    bool _canMove(int x, int y) {return _inside(x,y) && *moveMap.data(x,y) > 0;}
+    bool _isConnect(int x, int y) {return _inside(x, y) && *(*cur_connMap).data(x,y) != -1;}
+    int _getDist(int x, int y) {return *(*cur_connMap).data(x,y);}
+    double _getScaledDist(int x, int y) {
+        int ret = *(*cur_connMap).data(x,y);
+        if (ret < 0) return (double)(ret);
+        return (double)(ret) / cur_maxConnDist;
+    }
 };
 
 // find connected components
-vector<PII > BaseHouse::_find_components(int x1, int y1, int x2, int y2, bool return_largest, bool return_open) {
-    return vector<PII>({});
+vector<COMP_PTR> BaseHouse::_find_components(int x1, int y1, int x2, int y2, bool return_largest, bool return_open) {
+    int n = this->n;
+    vector<COMP_PTR > all_comps;
+    vector<int> open_comps;
+    map<int,int> visit;
+    int k = 0;
+    for(int x=x1;x<=x2;++x)
+        for(int y=y1;y<=y2;++y) {
+            int idx = INDEX(x,y,n);
+            if (*moveMap.data(i,j) > 0 && visit.count(INDEX(x,y,n)) == 0) {
+                vector<PII> comp;
+                comp.append(MKP(i,j));
+                visit[idx] = k;
+                int ptr = 0;
+                bool is_open = false;
+                while (ptr < comp.size()) {
+                    int px = comp[ptr].X, py = comp[ptr].Y;
+                    ptr ++;
+                    for (int d = 0; d < 4; ++ d) {
+                        int tx = px + dir[d][0], ty = py + dir[d][1];
+                        if this->_canMove(tx, ty) {
+                            if (tx < x1 || tx > x2 || ty < y1 || ty > y2) {
+                                is_open = true;
+                                continue;
+                            }
+                            int nxt_idx = INDEX(tx,ty,n);
+                            if (visit.count(nxt_idx) == 0) {
+                                visit[nxt_idx] = k;
+                                comp.append(MKP(tx, ty));
+                            }
+                        }
+                    }
+                }
+                if (is_open) open_comps.append(k);
+                k ++;
+                all_comps.append(make_shared<COMP_TP>(comp));
+            }
+        }
+    if (k == 0) return all_comps; // no components found
+    if (return_open) {
+        if (open_comps.size() == 0) {
+             cerr << ('WARNING!!!! [House] <find components in Target Room> No Open Components Found!!!! Return Largest Instead!!!!') << endl;
+             return_largest = true;
+        } else {
+            vector<COMP_PTR > tmp;
+            for (auto i: open_comps)
+                tmp.append(all_comps[i]);
+            all_comps = tmp;
+        }
+    }
+    if (return_largest) {
+        int p = -1, p_sz = -1;
+        for(int i=0;i<all_comps.size();++i)
+            if(all_comps[i]->size() > p_sz) {
+                p_sz = all_comps[i]->size();
+                p = i;
+            }
+        vector<COMP_PTR > tmp({all_comps[p]});
+        all_comps = tmp;
+    }
+    return all_comps;
+}
+
+// generate valid coors in a region
+vector<tuple<int,int> >* _getValidCoors(int x1, int y1, int x2, int y2, const string& reg_tag) {
+    auto iter = regionInd.find(reg_tag);
+    if (iter != regionInd.end()) {
+        int k = iter->second;
+        return &regValidCoorsLis[k];
+    } else {
+        regionInd[reg_tag] = regValidCoorsLis.size();
+        regValidCoorsLis.push_back(vector<tuple<int,int> >({}));
+        auto& coors = *regValidCoorsLis.back();
+        auto dat = this->_find_components(x1, y1, x2, y2, true, false);
+        auto& comp = dat[0]; // the largest components
+        for(auto& p: comp)
+            coors.push_back(make_tuple<int,int>(p.X, p.Y));
+        return *coors;
+    }
 }
 
 // generate obstacle map
@@ -99,10 +193,6 @@ py::array_t<int>* BaseHouse::_genObstacleMap(int n_row, bool retObject) {
 
 // generate shortest distance map (connMap)
 void BaseHouse::_genShortestDistMap(const vector<tuple<int,int,int,int>>&regions, const string& tag) {
-}
-
-// generate valid coors in a region
-vector<tuple<int,int> >* _getValidCoors(int x1, int y1, int x2, int y2, const string& reg_tag) {
 }
 
 PYBIND11_MODULE(example, m) {
@@ -115,6 +205,7 @@ PYBIND11_MODULE(example, m) {
         .def(py::init<int>())
         .def("_getConnMap", &BaseHouse::_getConnMap, py::return_value_policy::reference)
         .def("_getConnCoors", &BaseHouse::_getConnCoors, py::return_value_policy::reference)
+        .def("_getValidCoors", &BaseHouse::_getValidCoors, py::return_value_policy::reference)
         .def("_getMaxConnDist", &BaseHouse::_getMaxConnDist)
         .def("_setObsMap", &BaseHouse::_setObsMap)
         .def("_setMoveMap", &BaseHouse::_setMoveMap)
