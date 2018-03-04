@@ -51,7 +51,7 @@ class BaseHouse {
 public:
     py::array_t<int> obsMap, moveMap;
 private:
-    default_random_device engine;
+    default_random_engine engine;
     uniform_int_distribution<int32_t> rand_dist;
     int n;
     double L_lo, L_hi, L_det, grid_det, rad;
@@ -63,7 +63,7 @@ private:
     vector<tuple<int,int> >* cur_connCoors;
     int cur_maxConnDist;
     vector<vector<tuple<int,int> > > regValidCoorsLis;
-    map<string, int> targetInd  // index for targets <connMapLis, inroomDistLis, connCoorsLis, maxConnDistLis>
+    map<string, int> targetInd; // index for targets <connMapLis, inroomDistLis, connCoorsLis, maxConnDistLis>
     map<string, int> regionInd; // index for <regValidCoorsLis>
     // find connected components
     //   -> when return_open == true, return only open-components
@@ -167,7 +167,7 @@ public:
     vector<tuple<int,int> >* _getValidCoors(const string& reg_tag) {
         auto iter = regionInd.find(reg_tag);
         if (iter == regionInd.end()) return nullptr;
-        return regValidCoorsLis[iter->second];
+        return &regValidCoorsLis[iter->second];
     }
 
     ///////////////////////////////
@@ -181,7 +181,7 @@ public:
         return coors[k];
     }
     tuple<int,int> _getRandomConnectCoor(const string& tag) {
-        auto iter = targetInd.find(reg_tag);
+        auto iter = targetInd.find(tag);
         if (iter == targetInd.end()) return make_tuple(-1,-1);
         auto& coors = connCoorsLis[iter->second];
         int k = rand_dist(engine) % coors.size();
@@ -303,7 +303,7 @@ vector<COMP_PTR> BaseHouse::_find_components(int x1, int y1, int x2, int y2, boo
     if (k == 0) return all_comps; // no components found
     if (return_open) {
         if (open_comps.size() == 0) {
-             cerr << ('WARNING!!!! [House] <find components> No Open Components Found!!!! Return Largest Instead!!!!') << endl;
+             cerr << "WARNING!!!! [House] <find components> No Open Components Found!!!! Return Largest Instead!!!!" << endl;
              return_largest = true;
         } else {
             vector<COMP_PTR > tmp;
@@ -328,7 +328,7 @@ vector<COMP_PTR> BaseHouse::_find_components(int x1, int y1, int x2, int y2, boo
 
 // generate valid coors in a region
 bool BaseHouse::_genValidCoors(int x1, int y1, int x2, int y2, const string& reg_tag) {
-    if (regionInd.count(reg_tag) > 0) returnn false;
+    if (regionInd.count(reg_tag) > 0) return false;
     int k = regValidCoorsLis.size();
     regionInd[reg_tag] = k;
     regValidCoorsLis.push_back(vector<tuple<int,int> >({}));
@@ -388,7 +388,7 @@ bool BaseHouse::_genShortestDistMap(const vector<BOX_TP>&boxes, const string& ta
             continue;
         }
         double min_dist_to_center = 1e50;
-        int stamp = que.size();
+        size_t stamp = que.size();
         for(auto& comp_pt: cur_comps) {
             for(auto& p: *comp_pt) {
                 int x=p.X, y=p.Y;
@@ -402,7 +402,7 @@ bool BaseHouse::_genShortestDistMap(const vector<BOX_TP>&boxes, const string& ta
                 inroomDist[INDEX(x,y,sz)] = tdist;
             }
         }
-        for(int i=stamp;i<que.size();++i) {
+        for(size_t i=stamp;i<que.size();++i) {
             int x=que[i].X, y=que[i].Y;
             inroomDist[INDEX(x,y,sz)] -= min_dist_to_center;
         }
@@ -412,7 +412,8 @@ bool BaseHouse::_genShortestDistMap(const vector<BOX_TP>&boxes, const string& ta
         return false;
     }
     // BFS and compute shortest distance
-    int ptr = 0, maxConnDist = 1;
+    size_t ptr = 0;
+    int maxConnDist = 1;
     while (ptr < que.size()) {
         int x=que[ptr].X, y=que[ptr].Y;
         int cur_dist = connMap[INDEX(x,y,sz)];
@@ -441,10 +442,11 @@ bool BaseHouse::_genShortestDistMap(const vector<BOX_TP>&boxes, const string& ta
             *py_connMap.mutable_data(i,j) = connMap[INDEX(i,j,sz)];
             *py_inroomDist.mutable_data(i,j) = inroomDist[INDEX(i,j,sz)];
         }
-    delete connMap, inroomDist;
+    delete connMap;
+    delete inroomDist;
     for(auto&p: que)
         coors.push_back(make_tuple(p.X, p.Y));
-    cerr <<" >>>> ConnMap for tag<" << tag << "> Cached!"
+    cerr <<" >>>> ConnMap for tag<" << tag << "> Cached!" << endl;
     return true;
 }
 
