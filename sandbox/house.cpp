@@ -51,8 +51,6 @@ class BaseHouse {
 public:
     py::array_t<int> obsMap, moveMap;
 private:
-    default_random_engine engine;
-    uniform_int_distribution<int32_t> rand_dist;
     int n;
     double L_lo, L_hi, L_det, grid_det, rad;
     vector<py::array_t<int> > connMapLis, inroomDistLis;
@@ -63,7 +61,8 @@ private:
     vector<tuple<int,int> >* cur_connCoors;
     int cur_maxConnDist;
     vector<vector<tuple<int,int> > > regValidCoorsLis;
-    map<string, int> targetInd; // index for targets <connMapLis, inroomDistLis, connCoorsLis, maxConnDistLis>
+    vector<tuple<int,int> >* last_regValidCoors;
+    map<string, int> targetInd;  // index for targets <connMapLis, inroomDistLis, connCoorsLis, maxConnDistLis>
     map<string, int> regionInd; // index for <regValidCoorsLis>
     // find connected components
     //   -> when return_open == true, return only open-components
@@ -81,10 +80,8 @@ private:
         return false;
     }
 public:
-    BaseHouse(int seed): engine(seed), rand_dist(0, std::numeric_limits<int32_t>::max()),
-                         n(0), cur_connMap(nullptr), cur_inroomDist(nullptr), cur_connCoors(nullptr) {}
-    void _setHouseBox(int resolution, double _lo, double _hi, double _rad) {
-        n = resolution;
+    BaseHouse(int resolution): n(resolution), cur_connMap(nullptr), cur_inroomDist(nullptr), cur_connCoors(nullptr) {}
+    void _setHouseBox(double _lo, double _hi, double _rad) {
         L_lo = _lo; L_hi = _hi; rad = _rad;
         L_det = _hi - _lo; grid_det = L_det / n;
     }
@@ -170,29 +167,39 @@ public:
         return &regValidCoorsLis[iter->second];
     }
 
-    ///////////////////////////////
-    // random location generator
-    ///////////////////////////////
-    tuple<int,int> _getRandomValidCoor(const string& reg_tag) {
+    //////////////////////////////////////
+    // location getter utility functions
+    //////////////////////////////////////
+    // get valid coors and cache it
+    int _fetchValidCoorsSize(const string& reg_tag) {
         auto iter = regionInd.find(reg_tag);
-        if (iter == regionInd.end()) return make_tuple(-1,-1);
-        auto& coors = regValidCoorsLis[iter->second];
-        int k = rand_dist(engine) % coors.size();
-        return coors[k];
+        if (iter == regionInd.end()) {
+            last_regValidCoors = nullptr;
+            return 0;
+        }
+        last_regValidCoors = &regValidCoorsLis[iter->second];
+        return last_regValidCoors->size();
     }
-    tuple<int,int> _getRandomConnectCoor(const string& tag) {
+    // return indexed coor from cached list
+    tuple<int,int> _getCachedIndexedValidCoor(int k) {
+        if (last_regValidCoors == nullptr) return make_tuple(-1, -1);
+        return (*last_regValidCoors)[k];
+    }
+    int _getConnectCoorsSize(const string& tag){
         auto iter = targetInd.find(tag);
-        if (iter == targetInd.end()) return make_tuple(-1,-1);
-        auto& coors = connCoorsLis[iter->second];
-        int k = rand_dist(engine) % coors.size();
-        return coors[k];
+        if (iter == targetInd.end()) return 0;
+        return connCoorsLis[iter->second].size();
     }
-    tuple<int,int> _getRandomCurrConnectCoor() {
-        if (cur_connCoors == nullptr) return make_tuple(-1, -1);
-        auto& coors = *cur_connCoors;
-        int k = rand_dist(engine) % coors.size();
-        return coors[k];
+    tuple<int,int> _getIndexedConnectCoor(const string& tag, int k){
+        auto iter = targetInd.find(tag);
+        if (iter == targetInd.end()) return make_tuple(-1, -1);
+        return connCoorsLis[iter->second][k];
     }
+    int _getCurrConnectCoorsSize(){
+        if (cur_connCoors == nullptr) return 0;
+        return cur_connCoors->size();
+    }
+    tuple<int,int> _getCurrIndexedConnectCoor(int k){ return (*cur_connCoors)[k]; }
 
     //////////////////////////////////////////////////
     // range check and utility functions
@@ -452,7 +459,7 @@ bool BaseHouse::_genShortestDistMap(const vector<BOX_TP>&boxes, const string& ta
 
 PYBIND11_MODULE(example, m) {
     m.doc() = "[House3D] <BaseHouse> C++ implementation of calculating basic House properties"; // optional module docstring
-    m.def("_setHouseBox", &BaseHouse::_setHouseBox, "set the resolution, coordinate range and robot radius");
+    m.def("_setHouseBox", &BaseHouse::_setHouseBox, "set the coordinate range and robot radius");
     m.def("_setObsMap", &BaseHouse::_setObsMap, "set the value of obsMap");
     m.def("_setMoveMap", &BaseHouse::_setMoveMap, "set the value of moveMap");
     //m.def("_genObstacleMap", &BaseHouse::_genObstacleMap, "generate the obstacleMap given obstacle information") // TODO
@@ -466,9 +473,12 @@ PYBIND11_MODULE(example, m) {
     m.def("_getInroomDist", &BaseHouse::_getInroomDist, "get the current inroomDist");
     m.def("_getMaxConnDist", &BaseHouse::_getMaxConnDist, "get the current maxConnDist");
     m.def("_getValidCoors", &BaseHouse::_getValidCoors, "get the cached valid locations corresponding to a region_tag");
-    m.def("_getRandomValidCoor", &BaseHouse::_getRandomValidCoor, "generate random valid locations for a cached region_tag");
-    m.def("_getRandomConnectCoor", &BaseHouse::_getRandomConnectCoor, "generate random locations from the cached distance map of the input name tag");
-    m.def("_getRandomCurrConnectCoor", &BaseHouse::_getRandomCurrConnectCoor, "generate random locations from the current distance map");
+    m.def("_fetchValidCoorsSize", &BaseHouse::_fetchValidCoorsSize, "cache the valid locations and return the size of it");
+    m.def("_getCachedIndexedValidCoor", &BaseHouse::_getCachedIndexedValidCoor, "return the coor from the cached list by the index");
+    m.def("_getConnectCoorsSize", &BaseHouse::_getConnectCoorsSize, "return the size of the connectedCoors w.r.t. the tag");
+    m.def("_getIndexedConnectCoor", &BaseHouse::_getIndexedConnectCoor, "return the coor w.r.t. to the tag by the index");
+    m.def("_getCurrConnectCoorsSize", &BaseHouse::_getCurrConnectCoorsSize, "return the size of the current connectedCoors");
+    m.def("_getCurrIndexedConnectCoor", &BaseHouse::_getCurrIndexedConnectCoor, "return coor of the current connectedCoors by the index");
     m.def("_inside", &BaseHouse::_inside, "util: whether inside the range");
     m.def("_canMove", &BaseHouse::_canMove, "util: whether the robot can stand at the location");
     m.def("_isConnect", &BaseHouse::_isConnect, "util: whether the grid is connected to the target");
@@ -502,10 +512,13 @@ PYBIND11_MODULE(example, m) {
         .def("_getInroomDist", &BaseHouse::_getInroomDist, py::return_value_policy::reference)
         .def("_getValidCoors", &BaseHouse::_getValidCoors, py::return_value_policy::reference)
         .def("_getMaxConnDist", &BaseHouse::_getMaxConnDist)
-        // Random Location Generator
-        .def("_getRandomValidCoor", &BaseHouse::_getRandomValidCoor)
-        .def("_getRandomConnectCoor", &BaseHouse::_getRandomConnectCoor)
-        .def("_getRandomCurrConnectCoor", &BaseHouse::_getRandomCurrConnectCoor)
+        // Location Getter Utility Functions
+        .def("_fetchValidCoorsSize", &BaseHouse::_fetchValidCoorsSize)
+        .def("_getCachedIndexedValidCoor", &BaseHouse::_getCachedIndexedValidCoor)
+        .def("_getConnectCoorsSize", &BaseHouse::_getConnectCoorsSize)
+        .def("_getIndexedConnectCoor", &BaseHouse::_getIndexedConnectCoor)
+        .def("_getCurrConnectCoorsSize", &BaseHouse::_getCurrConnectCoorsSize)
+        .def("_getCurrIndexedConnectCoor", &BaseHouse::_getCurrIndexedConnectCoor)
         // Utility Functions
         .def("_inside", &BaseHouse::_inside)
         .def("_canMove", &BaseHouse::_canMove)
