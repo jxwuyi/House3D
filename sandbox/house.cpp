@@ -190,6 +190,20 @@ public:
         if (iter == targetInd.end()) return 0;
         return connCoorsLis[iter->second].size();
     }
+    int _getConnectCoorsSize_Bounded(const string& tag, int bound){
+        auto iter = targetInd.find(tag);
+        if (iter == targetInd.end()) return 0;
+        auto& coors = connCoorsLis[iter->second];
+        auto& connMap = connMapLis[iter->second];
+        int lo = -1, hi = coors.size(), mid;
+        while(lo + 1 < hi) {
+            mid = (lo + hi) / 2;
+            int x, y;
+            tie(x, y) = coors[mid];
+            if (*connMap.data(x, y) <= bound) lo = mid; else hi = mid;
+        }
+        return hi;
+    }
     tuple<int,int> _getIndexedConnectCoor(const string& tag, int k){
         auto iter = targetInd.find(tag);
         if (iter == targetInd.end()) return make_tuple(-1, -1);
@@ -198,6 +212,19 @@ public:
     int _getCurrConnectCoorsSize(){
         if (cur_connCoors == nullptr) return 0;
         return cur_connCoors->size();
+    }
+    int _getCurrConnectCoorsSize_Bounded(int bound){
+        if (cur_connCoors == nullptr) return 0;
+        auto& coors = *cur_connCoors;
+        auto& connMap = *cur_connMap;
+        int lo = -1, hi = coors.size(), mid;
+        while(lo + 1 < hi) {
+            mid = (lo + hi) / 2;
+            int x, y;
+            tie(x, y) = coors[mid];
+            if (*connMap.data(x,y) <= bound) lo = mid; else hi = mid;
+        }
+        return hi;
     }
     tuple<int,int> _getCurrIndexedConnectCoor(int k){ return (*cur_connCoors)[k]; }
 
@@ -453,7 +480,6 @@ bool BaseHouse::_genShortestDistMap(const vector<BOX_TP>&boxes, const string& ta
     delete inroomDist;
     for(auto&p: que)
         coors.push_back(make_tuple(p.X, p.Y));
-    cerr <<" >>>> ConnMap for tag<" << tag << "> Cached!" << endl;
     return true;
 }
 
@@ -476,8 +502,10 @@ PYBIND11_MODULE(example, m) {
     m.def("_fetchValidCoorsSize", &BaseHouse::_fetchValidCoorsSize, "cache the valid locations and return the size of it");
     m.def("_getCachedIndexedValidCoor", &BaseHouse::_getCachedIndexedValidCoor, "return the coor from the cached list by the index");
     m.def("_getConnectCoorsSize", &BaseHouse::_getConnectCoorsSize, "return the size of the connectedCoors w.r.t. the tag");
+    m.def("_getConnectCoorsSize_Bounded", &BaseHouse::_getConnectCoorsSize_Bounded, "return the size of the connectedCoors of the tag with distance no larger than bound");
     m.def("_getIndexedConnectCoor", &BaseHouse::_getIndexedConnectCoor, "return the coor w.r.t. to the tag by the index");
     m.def("_getCurrConnectCoorsSize", &BaseHouse::_getCurrConnectCoorsSize, "return the size of the current connectedCoors");
+    m.def("_getCurrConnectCoorsSize_Bounded", &BaseHouse::_getCurrConnectCoorsSize_Bounded, "return the size of the current connectedCoors with distance no larger than bound");
     m.def("_getCurrIndexedConnectCoor", &BaseHouse::_getCurrIndexedConnectCoor, "return coor of the current connectedCoors by the index");
     m.def("_inside", &BaseHouse::_inside, "util: whether inside the range");
     m.def("_canMove", &BaseHouse::_canMove, "util: whether the robot can stand at the location");
@@ -516,8 +544,10 @@ PYBIND11_MODULE(example, m) {
         .def("_fetchValidCoorsSize", &BaseHouse::_fetchValidCoorsSize)
         .def("_getCachedIndexedValidCoor", &BaseHouse::_getCachedIndexedValidCoor)
         .def("_getConnectCoorsSize", &BaseHouse::_getConnectCoorsSize)
+        .def("_getConnectCoorsSize_Bounded", &BaseHouse::_getConnectCoorsSize_Bounded)
         .def("_getIndexedConnectCoor", &BaseHouse::_getIndexedConnectCoor)
         .def("_getCurrConnectCoorsSize", &BaseHouse::_getCurrConnectCoorsSize)
+        .def("_getCurrConnectCoorsSize_Bounded", &BaseHouse::_getCurrConnectCoorsSize_Bounded)
         .def("_getCurrIndexedConnectCoor", &BaseHouse::_getCurrIndexedConnectCoor)
         // Utility Functions
         .def("_inside", &BaseHouse::_inside)

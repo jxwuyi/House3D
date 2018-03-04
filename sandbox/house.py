@@ -14,6 +14,9 @@ import copy
 
 import pdb
 
+from .house import BaseHouse
+#from .base_house_api import BaseHouse
+
 __all__ = ['House']
 
 ######################################
@@ -107,14 +110,14 @@ def fill_obj_mask(house, dest, obj, c=1):
     fill_region(dest, x1, y1, x2, y2, c)
 
 
-class House(object):
+class House(BaseHouse):
     """core class for loading and processing a house from SUNCG dataset
     """
     def __init__(self, JsonFile, ObjFile, MetaDataFile,
                  CachedFile=None,
                  StorageFile=None,
                  GenRoomTypeMap=False,
-                 EagleViewRes=100,
+                 EagleViewRes=0,
                  DebugInfoOn=False,
                  ColideRes=1000,
                  RobotRadius=0.1,
@@ -137,13 +140,15 @@ class House(object):
             CachedFile (str, recommended): file name of the pickled cached data for this house, None if no such cache (cachedmap1k.pkl)
             StorageFile (str, optional): if CachedFile is None, pickle all the data and store in this file
             GenRoomTypeMap (bool, optional): if turned on, generate the room type map for each location
-            EagleViewRes (int, optional): resolution of the topdown 2d map
+            EagleViewRes (int, optional): resolution of the smaller topdown 2d map, default 0 (do not build eagle_map)
             DebugInfoOn (bool, optional): store additional debugging information when this option is on
             ColideRes (int, optional): resolution of the 2d map for collision check (generally should not changed)
             RobotRadius (double, optional): radius of the robot/agent (generally should not be changed)
             RobotHeight (double, optional): height of the robot/agent (generally should not be changed)
             CarpetHeight (double, optional): maximum height of the obstacles that agent can directly go through (gennerally should not be changed)
         """
+        super(House, self).__init__(ColideRes)  # initialize parent class
+
         ts = time.time()
         print('Data Loading ...')
 
@@ -156,6 +161,8 @@ class House(object):
         self._debugMap = None if not DebugInfoOn else True
         with open(JsonFile) as jfile:
             self.house = house = json.load(jfile)
+
+        # parse walls
         self.all_walls = parse_walls(ObjFile, RobotHeight)
 
         # validity check
@@ -165,6 +172,7 @@ class House(object):
         if len(house['levels']) > 1:
             print('[Warning] Currently only support ground floor! <total floors = %d>' % (len(house['levels'])))
 
+        # parse house coordinate range
         self.level = level = house['levels'][0]  # only support ground floor now
         self.L_min_coor = _L_lo = np.array(level['bbox']['min'])
         self.L_lo = min(_L_lo[0], _L_lo[2])
@@ -174,6 +182,9 @@ class House(object):
         self.n_row = ColideRes
         self.eagle_n_row = EagleViewRes
         self.grid_det = self.L_det / self.n_row
+        self._setHouseBox(self.L_lo, self.L_hi, self.robotRad)  # set coordinate range of the C++ side
+
+        # parse objects and room/object types
         self.all_obj = [node for node in level['nodes'] if node['type'].lower() == 'object']
         self.all_rooms = [node for node in level['nodes'] if (node['type'].lower() == 'room') and ('roomTypes' in node)]
         self.all_roomTypes = [room['roomTypes'] for room in self.all_rooms]
@@ -198,16 +209,17 @@ class House(object):
 
         print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
         if _IgnoreSmallHouse and ((len(self.all_desired_roomTypes) < 2) or ('kitchen' not in self.all_desired_roomTypes)):
-            self.all_desired_roomTypes=[]
+            self.all_desired_roomTypes = []
             return
 
         print('Generating Low Resolution Obstacle Map ...')
         ts = time.time()
         # generate a low-resolution obstacle map
         self.tinyObsMap = np.ones((self.eagle_n_row, self.eagle_n_row), dtype=np.uint8)
-        self.genObstacleMap(MetaDataFile, gen_debug_map=False, dest=self.tinyObsMap, n_row=self.eagle_n_row-1)
         self.eagleMap = np.zeros((4, self.eagle_n_row, self.eagle_n_row), dtype=np.uint8)
-        self.eagleMap[0, ...] = self.tinyObsMap
+        if self.eagle_n_row > 1:
+            self.genObstacleMap(MetaDataFile, gen_debug_map=False, dest=self.tinyObsMap, n_row=self.eagle_n_row-1)
+            self.eagleMap[0, ...] = self.tinyObsMap
         print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
 
         # load from cache
@@ -216,22 +228,27 @@ class House(object):
             print('Loading Obstacle Map and Movability Map From Cache File ...')
             ts = time.time()
             with open(CachedFile, 'rb') as f:
-                self.obsMap, self.moveMap = pickle.load(f)
+                t_obsMap, t_moveMap = pickle.load(f)
+            self._setObsMap(t_obsMap)
+            self._setMoveMap(t_moveMap)
+            del t_obsMap
+            del t_moveMap
             print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
         else:
             # generate obstacle map
             print('Generate High Resolution Obstacle Map (For Collision Check) ...')
             ts = time.time()
             # obsMap was indexed by (x, y), not (y, x)
-            self.obsMap = np.ones((self.n_row+1, self.n_row+1), dtype=np.uint8)  # a small int is enough
+            t_obsMap = np.ones((self.n_row+1, self.n_row+1), dtype=np.uint8)  # a small int is enough
             if self._debugMap is not None:
                 self._debugMap = np.ones((self.n_row+1, self.n_row+1), dtype=np.float)
-            self.genObstacleMap(MetaDataFile)
+            self.genObstacleMap(MetaDataFile, dest=t_obsMap)
+            self._setObsMap(t_obsMap)
+            del t_obsMap
             print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
             # generate movability map for robots considering the radius
             print('Generate Movability Map ...')
             ts = time.time()
-            self.moveMap = np.zeros((self.n_row+1, self.n_row+1), dtype=np.int8)  # initially not movable
             self.genMovableMap()
             print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
 
@@ -245,13 +262,8 @@ class House(object):
         # set target room connectivity
         print('Generate Target connectivity Map (Default <{}>) ...'.format(self.default_roomTp))
         ts = time.time()
-        self.connMapDict = dict()
-        self.roomTypeLocMap = dict()    # roomType -> feasible locations
         self.targetRoomTp = None
-        self.targetRooms = []
-        self.connMap = None
-        self.inroomDist = None
-        self.setTargetRoom(self.default_roomTp, _setEagleMap=True)
+        self.setTargetRoom(self.default_roomTp)  # _setEagleMap=(self.eagle_n_row>0)
         print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
 
         self.roomTypeMap = None
@@ -262,7 +274,23 @@ class House(object):
             self._generate_room_type_map()
             print('  --> Done! Elapsed = %.2fs' % (time.time() - ts))
 
+    @property
+    def connMap(self):
+        return self._getConnMap()
 
+    @property
+    def inroomDist(self):
+        return self._getInroomDist()
+
+    @property
+    def maxConnDist(self):
+        return self._getMaxConnDist()
+
+    @property
+    def connectedCoors(self):
+        return self._getConnCoors()
+
+    #TODO: to make the following faster!!!!!!
     def _generate_room_type_map(self):
         rtMap = self.roomTypeMap
         # fill all the mask of rooms
@@ -281,105 +309,20 @@ class House(object):
                 if (self.moveMap[x, y] > 0) and (rtMap[x, y] == 0):
                     rtMap[x, y] = 1 << _get_pred_room_tp_id('outdoor')
 
-
-    def _find_components(self, x1, y1, x2, y2, dirs=None, return_largest=False, return_open=False):
-        """
-        return a list of components (coors), which are grid locations connencted and canMove
-        @:param return_largest: return_largest == True, return only a single list of coors, the largest components
-        @:param return_open: return_open == True, return only those components connected to outside of the room
-        @:param dirs: connected directions, by default 4-connected (L,R,U,D)
-        """
-        if dirs is None:
-            dirs = [[0, 1], [1, 0], [-1, 0], [0, -1]]
-        comps = []
-        open_comps = set()
-        visit = dict()
-        n = 0
-        for x in range(x1, x2+1):
-            for y in range(y1, y2+1):
-                pos = (x, y)
-                if self.canMove(x, y) and (pos not in visit):
-                    que = [pos]
-                    visit[pos] = n
-                    ptr = 0
-                    is_open = False
-                    while ptr < len(que):
-                        cx, cy = que[ptr]
-                        ptr += 1
-                        for det in dirs:
-                            tx, ty = cx + det[0], cy + det[1]
-                            if self.canMove(tx, ty):
-                                if (tx < x1) or (tx > x2) or (ty < y1) or (ty > y2):
-                                    is_open=True
-                                    continue
-                                tp = (tx, ty)
-                                if tp not in visit:
-                                    visit[tp] = n
-                                    que.append(tp)
-                    if is_open: open_comps.add(n)
-                    n += 1
-                    comps.append(que)
-        if n == 0: return []  # no components found!
-        ret_comps = comps
-        if return_open:
-            if len(open_comps) == 0:
-                print('WARNING!!!! [House] <find components in Target Room [%s]> No Open Components Found!!!! Return Largest Instead!!!!' % self.targetRoomTp)
-                return_largest = True
-            else:
-                ids = sorted(list(open_comps))
-                ret_comps = [comps[i] for i in ids]
-        if return_largest:
-            max_c = np.argmax([len(c) for c in ret_comps])
-            ret_comps = ret_comps[max_c]
-        # del visit
-        return ret_comps
-
     """
     Sets self.connMap to distances to target point with some margin
     """
     def setTargetPoint(self, x, y, margin_x=15, margin_y=15):
-        self.connMap = connMap = np.ones((self.n_row+1, self.n_row+1), dtype=np.int32) * -1
-        self.inroomDist = inroomDist = np.ones((self.n_row+1, self.n_row+1), dtype=np.float32) * -1
-        dirs = [[0, 1], [1, 0], [-1, 0], [0, -1]]
+        tag = "targetPoint<x=%.5f,y=%.5f>" % (x, y)
+        if self._setCurrentDistMap(tag):
+            return True
 
-        x1, y1, x2, y2 = x-margin_x, y-margin_y, x+margin_x, y+margin_y
-        _x, _y = self.to_coor(x, y)
-
-        curr_components = self._find_components(x1, y1, x2, y2, dirs=dirs, return_open=True)
-        if len(curr_components) == 0:
+        # compute shortest distance
+        if not self._genShortestDistMap([(x-margin_x, y-margin_y, x+margin_x, y+margin_y)], tag):
             return False
-
-        que = []
-        if isinstance(curr_components[0], list):  # join all the coors in the open components
-            curr_major_coors = list(itertools.chain(*curr_components))
-        else:
-            curr_major_coors = curr_components
-        min_dist_to_center = 1e50
-        for xx, yy in curr_major_coors:
-            connMap[xx, yy] = 0
-            que.append((xx, yy))
-            tx, ty = self.to_coor(xx, yy)
-            tdist = np.sqrt((tx - _x) ** 2 + (ty - _y) ** 2)
-            if tdist < min_dist_to_center:
-                min_dist_to_center = tdist
-            inroomDist[xx, yy] = tdist
-        for xx, yy in curr_major_coors:
-            inroomDist[xx, yy] -= min_dist_to_center
-
-        ptr = 0
-        self.maxConnDist = 1
-        while ptr < len(que):
-            xx, yy = que[ptr]
-            cur_dist = connMap[xx, yy]
-            ptr += 1
-            for dx, dy in dirs:
-                tx, ty = xx+dx, yy+dy
-                if self.inside(tx,ty) and self.canMove(tx,ty) and not self.isConnect(tx, ty):
-                    que.append((tx,ty))
-                    connMap[tx,ty] = cur_dist + 1
-                    if cur_dist + 1 > self.maxConnDist:
-                        self.maxConnDist = cur_dist + 1
-
+        # shortest distance map computed successfully
+        self._setCurrentDistMap(tag)
+        self.targetRoomTp = tag
         return True
 
     """
@@ -392,147 +335,94 @@ class House(object):
             assert False, '[House] target type <{}> not supported in the current house!'.format(targetRoomTp)
         if targetRoomTp == self.targetRoomTp:
             return False  # room not changed!
-        ###########
+        ###############################
         # Caching
-        if targetRoomTp in self.connMapDict:
-            self.targetRoomTp = targetRoomTp
-            self.connMap, self.connectedCoors, self.inroomDist, self.maxConnDist = self.connMapDict[targetRoomTp]
-            return True  # room Changed!
+        if self._setCurrentDistMap(targetRoomTp):
+            return True
+
+        ################################
+        # get destination range boxes
         flag_room_target = targetRoomTp in ALLOWED_TARGET_ROOM_TYPES
 
         if flag_room_target:
-            self.targetRooms = targetRooms = \
+            targetRooms = \
                 [(room['bbox']['min'][0], room['bbox']['min'][2], room['bbox']['max'][0], room['bbox']['max'][2])
                  for room in self.all_rooms if any([ _equal_room_tp(tp, targetRoomTp) for tp in room['roomTypes']])]
         else:
-            self.targetRooms = targetRooms = \
+            targetRooms = \
                 [(max(x1-self.objTargetRange, self.L_lo), max(y1-self.objTargetRange, self.L_lo),
                   min(x2+self.objTargetRange, self.L_hi), min(y2+self.objTargetRange, self.L_hi))
                  for x1,y1,x2,y2 in self.tar_obj_region[targetRoomTp]]
         assert (len(targetRooms) > 0), '[House] no target type <{}> in the current house!'.format(targetRoomTp)
-        ##########
+
+        ###############################
         # generate destination mask map
-        if _setEagleMap:  # TODO: Currently a hack to speedup mult-target learning!!! So eagleMap become *WRONG*!
+        print('[House] Caching New ConnMap for Target <{}>! (total {} rooms involved)'.format(targetRoomTp, len(targetRooms)))
+        if _setEagleMap and (self.eagle_n_row > 0):  # TODO: Currently a hack to speedup mult-target learning!!! So eagleMap become *WRONG*!
             self.eagleMap[1, ...] = 0
-            for room in self.targetRooms:
-                _x1, _y1, _x2, _y2 = room
-                x1,y1,x2,y2 = self.rescale(_x1,_y1,_x2,_y2,self.eagleMap.shape[1]-1)
-                self.eagleMap[1, x1:(x2+1), y1:(y2+1)]=1
-        print('[House] Caching New ConnMap for Target <{}>! (total {} rooms involved)'.format(targetRoomTp,len(targetRooms)))
-        backup_connMap, backup_inroomDist = self.connMap, self.inroomDist
-        self.connMap = connMap = np.ones((self.n_row+1, self.n_row+1), dtype=np.int32) * -1
-        self.inroomDist = inroomDist = np.ones((self.n_row+1, self.n_row+1), dtype=np.float32) * -1
-        dirs = [[0, 1], [1, 0], [-1, 0], [0, -1]]
-        que = []
-        flag_find_open_components = True
-        for _ in range(2):
             for room in targetRooms:
                 _x1, _y1, _x2, _y2 = room
-                cx, cy = (_x1 + _x2) / 2, (_y1 + _y2) / 2
-                x1,y1,x2,y2 = self.rescale(_x1,_y1,_x2,_y2)
-                curr_components = self._find_components(x1, y1, x2, y2, dirs=dirs, return_open=flag_find_open_components)  # find all the open components
-                if len(curr_components) == 0:
-                    print('WARNING!!!! [House] No Space Found in TargetRoom <tp=%s, bbox=[%.2f, %2f] x [%.2f, %.2f]>' %
-                          (targetRoomTp, _x1, _x2, _y1, _y2))
-                    continue
-                if isinstance(curr_components[0], list):  # join all the coors in the open components
-                    curr_major_coors = list(itertools.chain(*curr_components))
-                else:
-                    curr_major_coors = curr_components
-                min_dist_to_center = 1e50
-                for x, y in curr_major_coors:
-                    connMap[x, y] = 0
-                    que.append((x, y))
-                    tx, ty = self.to_coor(x, y)
-                    tdist = np.sqrt((tx - cx) ** 2 + (ty - cy) ** 2)
-                    if tdist < min_dist_to_center:
-                        min_dist_to_center = tdist
-                    inroomDist[x, y] = tdist
-                for x, y in curr_major_coors:
-                    inroomDist[x, y] -= min_dist_to_center
-            if len(que) > 0: break
-            if flag_find_open_components:
-                flag_find_open_components = False
-            else:
-                break
-            print('WARINING!!!! [House] No Space Found for Target Type {}! Now search even for closed region!!!'.format(targetRoomTp))
-        #assert len(que) > 0, 
-        if len(que) == 0:
-            errmsg = "Error!! [House] No space found for target type {}. House ID = {}"\
-                     .format(targetRoomTp, (self._id if hasattr(self, '_id') else 'NA'))
-            print(errmsg)
-            print('----> Remove Target Type <{}>'.format(targetRoomTp))
-            self.all_desired_targetTypes.remove(targetRoomTp) # invalid target remove from list 
-            self.connMap = backup_connMap
-            self.inroomDist = backup_inroomDist
+                x1,y1,x2,y2 = self.rescale(_x1,_y1,_x2,_y2,self.eagleMap.shape[1]-1)
+                self.eagleMap[1, x1:(x2+1), y1:(y2+1)] = 1
+        # compute shortest distance
+        if not self._genShortestDistMap(targetRooms, targetRoomTp):
+            print("Error Occured for Target {}! Target Removed from Target List!".format(targetRoomTp))
+            self.all_desired_targetTypes.remove(targetRoomTp)  # invalid target remove from list
             return False
-        ptr = 0
-        maxConnDist = 1
-        while ptr < len(que):
-            x,y = que[ptr]
-            cur_dist = connMap[x, y]
-            ptr += 1
-            for dx,dy in dirs:
-                tx,ty = x+dx,y+dy
-                if self.inside(tx,ty) and self.canMove(tx,ty) and not self.isConnect(tx, ty):
-                    que.append((tx,ty))
-                    connMap[tx,ty] = cur_dist + 1
-                    if cur_dist + 1 > maxConnDist:
-                        maxConnDist = cur_dist + 1
+        # shortest distance map computed successfully
+        self._setCurrentDistMap(targetRoomTp)
         self.targetRoomTp = targetRoomTp
-        self.maxConnDist = maxConnDist
-        self.connMapDict[targetRoomTp] = (connMap, que, inroomDist, maxConnDist)
-        self.connectedCoors = que
-        print(' >>>> ConnMap Cached!')
-        return True  # room changed!
-
+        del targetRooms
+        print(' >>>> ConnMap Cached for targetRoomTp<{}>!'.format(targetRoomTp))
+        return True
 
     def _getRoomBounds(self, room):
         _x1, _, _y1 = room['bbox']['min']
         _x2, _, _y2 = room['bbox']['max']
         return self.rescale(_x1, _y1, _x2, _y2)
 
+    def _getRoomCoorBox(self, room):
+        _x1, _, _y1 = room['bbox']['min']
+        _x2, _, _y2 = room['bbox']['max']
+        return _x1, _y1, _x2, _y2
+
     """
     returns a random location of a given room type
     """
-    def getRandomLocation(self, roomTp):
+    def getRandomLocation(self, roomTp, return_grid=False):
         roomTp = roomTp.lower()
         assert roomTp in ALLOWED_TARGET_ROOM_TYPES, '[House] room type <{}> not supported!'.format(roomTp)
-        # get list of valid locations within the room bounds
-        locations = []
-        rooms = self._getRooms(roomTp)
-        for room in rooms:
-            room_locs = self._getValidRoomLocations(room)
-            if room_locs and len(room_locs) > 0:
-                locations.extend(room_locs)
+        if self._getConnectCoorsSize(roomTp) == 0:
+            rooms = self._getRooms(roomTp)
+            room_boxes = [self._getRoomCoorBox(room) for room in rooms]
+            self._genShortestDistMap(room_boxes, roomTp)
 
-        # choose random location
-        result = None
-        if len(locations) > 0:
-            idx = np.random.choice(len(locations))
-            result = self.to_coor(locations[idx][0], locations[idx][1], True)
+        sz = self._getConnectCoorsSize_Bounded(roomTp, 0)  # only consider those locations inside the room
+        if sz == 0: return None
+        gx, gy = self._getIndexedConnectCoor(roomTp, np.random.randint(sz))
+        if return_grid: return gx, gy
+        return self.to_coor(gx, gy, True)
 
-        return result
+    def getRandomLocationForRoom(self, room_node, return_grid=False):
+        reg_tag = room_node['id']
+        x1, y1, x2, y2 = self._getRoomBounds(room_node)
+        self._genValidCoors(x1, y1, x2, y2, reg_tag)
+        sz = self._fetchValidCoorsSize(reg_tag)
+        if sz == 0: return None
+        gx, gy = self._getCachedIndexedValidCoor(np.random.randint(sz))
+        if return_grid: return gx, gy
+        return self.to_coor(gx, gy, True)
 
-
-    def getRandomLocationForRoom(self, room_node):
-        room_locs = self._getValidRoomLocations(room_node)
-        if len(room_locs) == 0:
-            return None
-        idx = np.random.choice(len(room_locs))
-        return self.to_coor(room_locs[idx][0], room_locs[idx][1], True)
-
-
-    def _getValidRoomLocations(self, room_node):
-        room_locs = None
-        if room_node['id'] in self.roomTypeLocMap:
-            room_locs = self.roomTypeLocMap[room_node['id']]
-        else:
-            room_bounds = self._getRoomBounds(room_node)
-            room_locs = self._find_components(*room_bounds, return_largest=True)
-            self.roomTypeLocMap[room_node['id']] = room_locs
-        return room_locs
-
+    """
+    returns a random location for the current targetTp
+      --> when max_allowed_distance is not None, only return location no further than the distance from the target
+    """
+    def getRandomConnectedLocation(self, return_grid=False, max_allowed_distance=None):
+        sz = self._getCurrConnectCoorsSize() if max_allowed_distance is None else self._getCurrConnectCoorsSize_Bounded(max_allowed_distance)
+        if sz == 0: return None
+        gx, gy = self._getCurrIndexedConnectCoor(np.random.randint(sz))
+        if return_grid: return gx, gy
+        return self.to_coor(gx, gy, True)
 
     """
     cache the shortest distance to all the possible room types
@@ -559,6 +449,7 @@ class House(object):
                 self.tar_obj_region[cat] = []
             self.tar_obj_region[cat].append((_x1, _y1, _x2, _y2))
 
+    # TODO: maybe move this to C++ side?
     def genObstacleMap(self, MetaDataFile, gen_debug_map=True, dest=None, n_row=None):
         # load all the doors
         target_match_class = 'nyuv2_40class'
@@ -639,33 +530,22 @@ class House(object):
 
     def genMovableMap(self):
         roi_bounds = self._getRegionsOfInterest()
-        for roi in roi_bounds:
-            self._updateMovableMap(*roi)
-
-
-    def _updateMovableMap(self, x1, y1, x2, y2):
-        for i in range(x1, x2):
-            for j in range(y1, y2):
-                if self.obsMap[i,j] == 0:
-                    cx, cy = self.to_coor(i, j, True)
-                    if self.check_occupy(cx,cy):
-                        self.moveMap[i,j] = 1
-
+        self._genMovableMap(roi_bounds)
 
     def _getRegionsOfInterest(self):
         """Override this function for customizing the areas of the map to
         consider when marking valid movable locations
-        Returns a list of (x1, y1, x2, y2) tuples representing bounding boxes
+        Returns a list of (x1, y1, x2, y2) tuples (boundary inclusive) representing bounding boxes
         of valid areas.  Coordinates are normalized grid coordinates.
         """
-        return [(0, 0, self.n_row+1, self.n_row+1)]
+        return [(0, 0, self.n_row, self.n_row)]
 
 
     """
     check whether the *grid* coordinate (x,y) is inside the house
     """
     def inside(self,x,y):
-        return x >= 0 and y >=0 and x <= self.n_row and y <= self.n_row
+        return self._inside(x, y)
 
     """
     get the corresponding grid coordinate of (x, y) in the topdown 2d map
@@ -680,80 +560,50 @@ class House(object):
     """
     def rescale(self,x1,y1,x2,y2,n_row=None):
         if n_row is None: n_row = self.n_row
-        tiny = 1e-9
-        tx1 = np.floor((x1 - self.L_lo) / self.L_det * n_row+tiny)
-        ty1 = np.floor((y1 - self.L_lo) / self.L_det * n_row+tiny)
-        tx2 = np.floor((x2 - self.L_lo) / self.L_det * n_row+tiny)
-        ty2 = np.floor((y2 - self.L_lo) / self.L_det * n_row+tiny)
-        return int(tx1),int(ty1),int(tx2),int(ty2)
+        return self._rescale(x1, y1, x2, y2, n_row)
 
     def to_grid(self, x, y, n_row=None):
         """
         Convert the true-scale coordinate in SUNCG dataset to grid location
         """
         if n_row is None: n_row = self.n_row
-        tiny = 1e-9
-        tx = np.floor((x - self.L_lo) / self.L_det * n_row + tiny)
-        ty = np.floor((y - self.L_lo) / self.L_det * n_row + tiny)
-        return int(tx), int(ty)
+        return self._to_grid(x, y, n_row)
 
     def to_coor(self, x, y, shft=False):
         """
         Convert grid location to SUNCG dataset continuous coordinate (the grid center will be returned when shft is True)
         """
-        tx, ty = x * self.grid_det + self.L_lo, y * self.grid_det + self.L_lo
-        if shft:
-            tx += 0.5 * self.grid_det
-            ty += 0.5 * self.grid_det
-        return tx, ty
-
-    def _check_grid_occupy(self,cx,cy,gx,gy):
-        for x in range(gx,gx+2):
-            for y in range(gy,gy+2):
-                rx, ry = x * self.grid_det + self.L_lo, y * self.grid_det + self.L_lo
-                if (rx-cx)**2+(ry-cy)**2<=self.robotRad*self.robotRad:
-                    return True
-        return False
+        return self._to_coor(x, y, shft)
 
     """
     suppose the robot stands at continuous coordinate (cx, cy), check whether it will touch any obstacles
     """
-    def check_occupy(self, cx, cy): # cx, cy are real coordinates
-        radius = self.robotRad
-        x1,y1,x2,y2=self.rescale(cx-radius,cy-radius,cx+radius,cy+radius)
-        for xx in range(x1,x2+1):
-            for yy in range(y1,y2+1):
-                if (not self.inside(xx,yy) or self.obsMap[xx,yy] == 1) \
-                    and self._check_grid_occupy(cx,cy,xx,yy):
-                    return False
-        return True
+    def check_occupy(self, cx, cy):  # cx, cy are real coordinates
+        return self._check_occupy(cx, cy)
 
     """
     check if an agent can reach grid location (gx, gy)
     """
     def canMove(self, gx, gy):
-        return (self.inside(gx, gy)) and (self.moveMap[gx, gy] > 0)
+        return self._canMove(gx, gy)
 
     """
     check if grid location (gx, gy) is connected to the target room
     """
     def isConnect(self, gx, gy):
-        return (self.inside(gx, gy)) and (self.connMap[gx, gy] != -1)
+        return self._isConnect(gx, gy)
 
     """
     get the raw shortest distance from grid location (gx, gy) to the target room
     """
     def getDist(self, gx, gy):
-        return self.connMap[gx, gy]
+        return self._getDist(gx, gy)
 
     """
     return a scaled shortest distance, which ranges from 0 to 1
     """
     def getScaledDist(self, gx, gy):
-        ret = self.connMap[gx, gy]
-        if ret < 0:
-            return ret
-        return ret / self.maxConnDist
+        return self._getScaledDist(gx, gy)
 
 
     """
@@ -771,8 +621,7 @@ class House(object):
     return whether or not a given room type exists in the house
     """
     def hasRoomType(self, roomTp):
-        rooms = self._getRooms(roomTp)
-        return len(rooms) > 0
+        return len(self._getRooms(roomTp)) > 0
 
 
     #######################
