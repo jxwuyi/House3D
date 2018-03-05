@@ -4,6 +4,7 @@ import random
 import time
 
 from house import House
+from core import Environment, MultiHouseEnv
 
 import json
 CFG = json.load(open('config.json','r'))
@@ -75,9 +76,11 @@ def create_house_from_index(k, genRoomTypeMap=False, cacheAllTarget=False):
 
 if __name__ == '__main__':
     import time
+    #import objrender
     print('Start Generating House ....')
     ts = time.time()
-    house = create_house_from_index(0)
-    house.cache_all_target()
+    all_houses = create_house_from_index(-20, cacheAllTarget=True)
+    #api = objrender.RenderAPI(w=resolution[0], h=resolution[1], device=render_device)
+    #env = MultiHouseEnv(api, all_houses, config=CFG)
     dur = time.time() - ts
     print('  --> Time Elapsed = %.6f (s)' % dur)
