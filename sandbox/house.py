@@ -14,7 +14,7 @@ import copy
 
 import pdb
 
-from .base_house import BaseHouse
+from base_house import BaseHouse
 #from .base_house_api import BaseHouse
 
 __all__ = ['House']

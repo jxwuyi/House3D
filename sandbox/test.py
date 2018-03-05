@@ -3,11 +3,10 @@ import numpy as np
 import random
 import time
 
-from .house import House
+from house import House
 
-from House3D.common import load_config
-
-CFG = load_config('config.json')
+import json
+CFG = json.load(open('config.json','r'))
 prefix = CFG['prefix']
 csvFile = CFG['modelCategoryFile']
 colorFile = CFG['colorFile']

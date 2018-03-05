@@ -483,7 +483,7 @@ bool BaseHouse::_genShortestDistMap(const vector<BOX_TP>&boxes, const string& ta
     return true;
 }
 
-PYBIND11_MODULE(example, m) {
+PYBIND11_MODULE(base_house, m) {
     m.doc() = "[House3D] <BaseHouse> C++ implementation of calculating basic House properties"; // optional module docstring
     m.def("_setHouseBox", &BaseHouse::_setHouseBox, "set the coordinate range and robot radius");
     m.def("_setObsMap", &BaseHouse::_setObsMap, "set the value of obsMap");
