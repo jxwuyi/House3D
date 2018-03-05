@@ -13,8 +13,8 @@ import cv2
 import pickle
 
 import gym
-from .house import House
-from .objrender import RenderMode
+from house import House
+from objrender import RenderMode
 
 __all__ = ['Environment', 'MultiHouseEnv']
 
@@ -154,13 +154,10 @@ class Environment():
 
         # TODO move cachedLocMap to House
         if self.cachedLocMap is None:
-            locMap = np.zeros((n_row + 1, n_row + 1, 3), dtype=np.uint8)
-            for i in range(n_row):  # w
-                for j in range(n_row):  # h
-                    if house.obsMap[i, j] == 0:
-                        locMap[j, i, :] = 255
-                    if house.canMove(i, j):
-                        locMap[j, i, :2] = 200  # purple
+            t_locMap = np.zeros(house.obsMap.shape, dtype=np.uint8)
+            t_locMap[house.obsMap == 0] = 255
+            t_locMap[house.moveMap > 0] = 200
+            locMap = np.tile(t_locMap[:, :, np.newaxis], (1,1,3))
             self.cachedLocMap = locMap.copy()
         else:
             locMap = self.cachedLocMap.copy()
@@ -172,24 +169,12 @@ class Environment():
         return locMap
 
     def _check_collision_fast(self, pA, pB, num_samples=5):
-        ratio = 1.0 / num_samples
-        for i in range(num_samples):
-            p = (pB - pA) * (i + 1) * ratio + pA
-            gx, gy = self.house.to_grid(p[0], p[2])
-            if (not self.house.canMove(gx, gy)) or (not self.house.isConnect(gx, gy)):
-                return False
-        return True
+        return self.house.collision_check_fast((pA[0], pA[2]), (pB[0], pB[1]), num_samples)
 
     def _check_collision(self, pA, pB, num_samples=5):
         if USE_FAST_COLLISION_CHECK:
             return self._check_collision_fast(pA, pB, FAST_COLLISION_CHECK_SAMPLES)
-        # pA is always valid
-        ratio = 1.0 / num_samples
-        for i in range(num_samples):
-            p = (pB - pA) * (i + 1) * ratio + pA
-            if not self.house.check_occupy(p[0], p[2]):
-                return False
-        return True
+        return self.house.collision_check_slow((pA[0], pA[2]), (pB[0], pB[1]), num_samples)
 
     def move_forward(self, dist_fwd, dist_hor=0):
         """
@@ -233,8 +218,7 @@ class Environment():
         Valid means some place in open area.
         """
         if x is None:
-            gx, gy = random.choice(self.house.connectedCoors)
-            x, y = self.house.to_coor(gx, gy, True)
+            x, y = self.house.getRandomConnectedLocation()
         if yaw is None:
             yaw = np.random.rand() * 360 - 180
         self.cam.pos.x = x

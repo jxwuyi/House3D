@@ -14,8 +14,8 @@ import pickle
 
 import gym
 from gym import spaces
-from .house import House
-from .core import Environment, MultiHouseEnv
+from house import House
+from core import Environment, MultiHouseEnv
 
 __all__ = ['RoomNavTask']
 
@@ -154,8 +154,8 @@ class RoomNavTask(gym.Env):
 
         # config hardness
         self.hardness = None
-        self.availCoors = None
-        self._availCoorsDict = None
+        self.availCoorsSize = None
+        self._availCoorsSizeDict = None
         self.reset_hardness(hardness)
 
         # temp storage
@@ -200,16 +200,15 @@ class RoomNavTask(gym.Env):
         #    assert target in desired_target_list, '[RoomNavTask] desired target <{}> does not exist in the current house!'.format(target)
         if self.house.setTargetRoom(target):  # target room changed!!!
             _id = self.house._id
-            if self.house.targetRoomTp not in self._availCoorsDict[_id]:
+            if self.house.targetRoomTp not in self._availCoorsSizeDict[_id]:
                 if self.hardness is None:
-                    self.availCoors = self.house.connectedCoors
+                    self.availCoorsSize = self.house.getConnectedLocationSize()
                 else:
-                    allowed_dist = self.house.maxConnDist * self.hardness
-                    self.availCoors = [c for c in self.house.connectedCoors
-                                       if self.house.connMap[c[0], c[1]] <= allowed_dist]
-                self._availCoorsDict[_id][self.house.targetRoomTp] = self.availCoors
+                    allowed_dist = int(self.house.maxConnDist * self.hardness + 1e-10)
+                    self.availCoorsSize = self.house.getConnectedLocationSize(max_allowed_dist=allowed_dist)
+                self._availCoorsSizeDict[_id][self.house.targetRoomTp] = self.availCoorsSize
             else:
-                self.availCoors = self._availCoorsDict[_id][self.house.targetRoomTp]
+                self.availCoorsSize = self._availCoorsSizeDict[_id][self.house.targetRoomTp]
 
     @property
     def house(self):
@@ -231,12 +230,12 @@ class RoomNavTask(gym.Env):
 
         # reset target room
         self.reset_target(target=target)  # randomly reset
+        self.collision_flag = False
 
         # general birth place
-        gx, gy = random.choice(self.availCoors)
-        self.collision_flag = False
+        x, y = self.house.getIndexedConnectedLocation(np.random.randint(self.availCoorsSize))
+
         # generate state
-        x, y = self.house.to_coor(gx, gy, True)
         self.env.reset(x=x, y=y)
         self.last_obs = self.env.render()
         if self.joint_visual_signal:
@@ -398,14 +397,13 @@ class RoomNavTask(gym.Env):
     def reset_hardness(self, hardness=None):
         self.hardness = hardness
         if hardness is None:
-            self.availCoors = self.house.connectedCoors
+            self.availCoorsSize = self.house.getConnectedLocationSize()
         else:
-            allowed_dist = self.house.maxConnDist * hardness
-            self.availCoors = [c for c in self.house.connectedCoors
-                               if self.house.connMap[c[0], c[1]] <= allowed_dist]
+            allowed_dist = int(self.house.maxConnDist * hardness + 1e-10)
+            self.availCoorsSize = self.house.getConnectedLocationSize(max_allowed_dist=allowed_dist)
         n_house = self.env.num_house
-        self._availCoorsDict = [dict() for i in range(n_house)]
-        self._availCoorsDict[self.house._id][self.house.targetRoomTp] = self.availCoors
+        self._availCoorsSizeDict = [dict() for i in range(n_house)]
+        self._availCoorsSizeDict[self.house._id][self.house.targetRoomTp] = self.availCoorsSize
 
     """
     recover the state (location) of the agent from the info dictionary

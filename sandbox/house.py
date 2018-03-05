@@ -415,12 +415,29 @@ class House(BaseHouse):
 
     """
     returns a random location for the current targetTp
-      --> when max_allowed_distance is not None, only return location no further than the distance from the target
+      --> when max_allowed_dist is not None, only return location no further than the distance from the target
     """
-    def getRandomConnectedLocation(self, return_grid=False, max_allowed_distance=None):
-        sz = self._getCurrConnectCoorsSize() if max_allowed_distance is None else self._getCurrConnectCoorsSize_Bounded(max_allowed_distance)
+    def getRandomConnectedLocation(self, return_grid=False, max_allowed_dist=None):
+        sz = self._getCurrConnectCoorsSize() if max_allowed_dist is None else self._getCurrConnectCoorsSize_Bounded(max_allowed_dist)
         if sz == 0: return None
         gx, gy = self._getCurrIndexedConnectCoor(np.random.randint(sz))
+        if return_grid: return gx, gy
+        return self.to_coor(gx, gy, True)
+
+    """
+    return the total number of connected locations for the current targetTp
+      --> when max_allowed_dist is not None, return the number of grids no further than the distance
+    """
+    def getConnectedLocationSize(self, max_allowed_dist=None):
+        return self._getCurrConnectCoorsSize() if max_allowed_dist is None else self._getCurrConnectCoorsSize_Bounded(max_allowed_dist)
+
+    """
+    return the indexed entry in the current connected locations
+    """
+    def getIndexedConnectedLocation(self, idx, return_grid=False):
+        sz = self._getCurrConnectCoorsSize()
+        if (idx < 0) or (idx >= sz): return None  # out of range
+        gx, gy = self._getCurrIndexedConnectCoor(idx)
         if return_grid: return gx, gy
         return self.to_coor(gx, gy, True)
 
@@ -623,6 +640,18 @@ class House(BaseHouse):
     def hasRoomType(self, roomTp):
         return len(self._getRooms(roomTp)) > 0
 
+
+    """
+    return whether the robot can move from pA to pB (real coordinate) via moveMap
+    """
+    def collision_check_fast(self, pA, pB, num_samples):
+        return self._fast_collision_check(pA[0], pA[1], pB[0], pB[1], num_samples)
+
+    """
+    return whether the robot can move from pA to pB (real coordinate) via check_occupy()
+    """
+    def collision_check_slow(self, pA, pB, num_samples):
+        return self._full_collision_check(pA[0], pA[1], pB[0], pB[1], num_samples)
 
     #######################
     # DEBUG functionality #

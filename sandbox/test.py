@@ -78,5 +78,6 @@ if __name__ == '__main__':
     print('Start Generating House ....')
     ts = time.time()
     house = create_house_from_index(0)
+    house.cache_all_target()
     dur = time.time() - ts
     print('  --> Time Elapsed = %.6f (s)' % dur)
