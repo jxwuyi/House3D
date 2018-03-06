@@ -363,7 +363,6 @@ class MultiHouseEnv(Environment):
         self._load_objects()
 
     def cache_shortest_distance(self):
-        # TODO
         for house in self.all_houses:
             house.cache_all_target()
 

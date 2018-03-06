@@ -270,7 +270,6 @@ class House(BaseHouse):
         if GenRoomTypeMap:
             ts = time.time()
             print('Generate Room Type Map ...')
-            self.roomTypeMap = np.zeros((self.n_row+1, self.n_row+1), dtype=np.uint16)
             self._generate_room_type_map()
             print('  --> Done! Elapsed = %.2fs' % (time.time() - ts))
 
@@ -290,24 +289,27 @@ class House(BaseHouse):
     def connectedCoors(self):
         return self._getConnCoors()
 
-    #TODO: to make the following faster!!!!!!
     def _generate_room_type_map(self):
+        if self.roomTypeMap is None:
+            self.roomTypeMap = np.zeros((self.n_row + 1, self.n_row + 1), dtype=np.uint16)
         rtMap = self.roomTypeMap
         # fill all the mask of rooms
         for room in self.all_rooms:
             msk = 1 << _get_pred_room_tp_id('indoor')
-            for tp in room['roomTypes']: msk = msk | (1 << _get_pred_room_tp_id(tp))
+            for tp in room['roomTypes']:
+                msk |= 1 << _get_pred_room_tp_id(tp)
             _x1, _, _y1 = room['bbox']['min']
             _x2, _, _y2 = room['bbox']['max']
             x1, y1, x2, y2 = self.rescale(_x1, _y1, _x2, _y2)
-            for x in range(x1, x2+1):
-                for y in range(y1, y2+1):
-                    if self.moveMap[x, y] > 0:
-                        rtMap[x, y] = rtMap[x, y] | msk
-        for x in range(self.n_row+1):
-            for y in range(self.n_row+1):
-                if (self.moveMap[x, y] > 0) and (rtMap[x, y] == 0):
-                    rtMap[x, y] = 1 << _get_pred_room_tp_id('outdoor')
+            array_msk = np.array(self.moveMap[x1:x2+1, y1:y2+1], dtype=np.uint16)
+            np.clip(array_msk, 0, 1, out=array_msk)  # inplace clipping to 0-1 matrix
+            array_msk *= msk
+            rtMap[x1:x2+1, y1:y2+1] |= array_msk
+        outdoor_msk = 1 << _get_pred_room_tp_id('outdoor')
+        array_msk = np.ones(rtMap.shape, dtype=np.uint16) * outdoor_msk
+        array_msk[rtMap > 0] = 0  # mark empty cells with positive flag
+        array_msk[self.moveMap == 0] = 0  # exclude obstacle positions
+        rtMap |= array_msk  # set <outdoor> flag to positions (1) movable & (2) originally not marked
 
     """
     Sets self.connMap to distances to target point with some margin
