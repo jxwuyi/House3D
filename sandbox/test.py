@@ -15,6 +15,7 @@ roomTargetFile = CFG['roomTargetFile']
 objectTargetFile = CFG['objectTargetFile'] if 'objectTargetFile' in CFG else None
 modelObjectMapFile = CFG['modelObjectMap'] if 'modelObjectMap' in CFG else None
 
+flag_parallel_init = False
 
 """
 all_houseIDs = ['00065ecbdd7300d35ef4328ffe871505',
@@ -72,21 +73,22 @@ def create_house_from_index(k, genRoomTypeMap=False, cacheAllTarget=False):
         ts = time.time()
         print('Caching All Worlds ...')
         # use the first k houses
+        if not flag_parallel_init:
+            return [create_house(houseID, genRoomTypeMap, cacheAllTarget) for houseID in all_houseIDs[:k]]
         from multiprocessing import Pool
         _args = [(all_houseIDs[j], genRoomTypeMap, cacheAllTarget) for j in range(k)]
         with Pool(k) as pool:
             ret_worlds = pool.starmap(create_house, _args)  # parallel version for initialization
         print('  >> Done! Time Elapsed = %.4f(s)' % (time.time() - ts))
         return ret_worlds
-        # return [create_world(houseID, genRoomTypeMap) for houseID in all_houseIDs[:k]]
 
 if __name__ == '__main__':
     import time
-    #import objrender
     print('Start Generating House ....')
     ts = time.time()
-    all_houses = create_house_from_index(-200, cacheAllTarget=True)
-    #api = objrender.RenderAPI(w=resolution[0], h=resolution[1], device=render_device)
-    #env = MultiHouseEnv(api, all_houses, config=CFG)
+    all_houses = create_house_from_index(-20, cacheAllTarget=True)
+    import objrender
+    api = objrender.RenderAPI(w=400, h=300, device=0)
+    env = MultiHouseEnv(api, all_houses, config=CFG)
     dur = time.time() - ts
     print('  --> Time Elapsed = %.6f (s)' % dur)
