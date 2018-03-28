@@ -340,6 +340,7 @@ class House(BaseHouse):
         ###############################
         # Caching
         if self._setCurrentDistMap(targetRoomTp):
+            self.targetRoomTp = targetRoomTp
             return True
 
         ################################

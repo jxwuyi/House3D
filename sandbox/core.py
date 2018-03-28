@@ -162,19 +162,19 @@ class Environment():
         else:
             locMap = self.cachedLocMap.copy()
 
-        rad = house.robotRad / house.L_det * house.n_row
+        rad = house.robotRad * 2 / house.L_det * house.n_row
         x, y = house.to_grid(x, y)
-        locMap = cv2.circle(locMap, (x, y), int(rad), (255, 50, 50), thickness=-1)
+        locMap = cv2.circle(locMap, (y, x), int(rad), (255, 50, 50), thickness=-1)
         locMap = cv2.resize(locMap, resolution)
         return locMap
 
     def _check_collision_fast(self, pA, pB, num_samples=5):
-        return self.house.collision_check_fast((pA[0], pA[2]), (pB[0], pB[1]), num_samples)
+        return self.house.collision_check_fast((pA[0], pA[2]), (pB[0], pB[2]), num_samples)
 
     def _check_collision(self, pA, pB, num_samples=5):
         if USE_FAST_COLLISION_CHECK:
             return self._check_collision_fast(pA, pB, FAST_COLLISION_CHECK_SAMPLES)
-        return self.house.collision_check_slow((pA[0], pA[2]), (pB[0], pB[1]), num_samples)
+        return self.house.collision_check_slow((pA[0], pA[2]), (pB[0], pB[2]), num_samples)
 
     def move_forward(self, dist_fwd, dist_hor=0):
         """
@@ -327,7 +327,7 @@ class Environment():
 
 
 class MultiHouseEnv(Environment):
-    def __init__(self, api, houses, config, seed=None):
+    def __init__(self, api, houses, config, seed=None, parallel_init=True):
         """
         Args:
             houses: a list of house id or `House` instance.
@@ -336,11 +336,16 @@ class MultiHouseEnv(Environment):
         ts = time.time()
         if not isinstance(houses, list):
             houses = [houses]
-        from multiprocessing import Pool
         _args = [(h, config) for h in houses]
         k = len(houses)
-        with Pool(k) as pool:
-            self.all_houses = pool.starmap(local_create_house, _args)  # parallel version for initialization
+        self.all_houses = []
+        if parallel_init:
+            from multiprocessing import Pool
+            _args = [(h, config) for h in houses]
+            with Pool(k) as pool:
+                self.all_houses = pool.starmap(local_create_house, _args)  # parallel version for initialization
+        else:
+            self.all_houses = [local_create_house(h, config) for h in houses]
         print('  >> Done! Time Elapsed = %.4f(s)' % (time.time() - ts))
         for i, h in enumerate(self.all_houses):
             h._id = i

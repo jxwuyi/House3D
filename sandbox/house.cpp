@@ -297,15 +297,15 @@ public:
 
 // find connected components
 vector<COMP_PTR> BaseHouse::_find_components(int x1, int y1, int x2, int y2, bool return_largest, bool return_open) {
-    int n = this->n;
     vector<COMP_PTR > all_comps;
     vector<int> open_comps;
     map<int,int> visit;
     int k = 0;
+    int sz = this->n + 1;
     for(int x=x1;x<=x2;++x)
         for(int y=y1;y<=y2;++y) {
-            int idx = INDEX(x,y,n);
-            if (*moveMap.data(x,y) > 0 && visit.count(INDEX(x,y,n)) == 0) {
+            int idx = INDEX(x,y,sz);
+            if (*moveMap.data(x,y) > 0 && visit.count(INDEX(x,y,sz)) == 0) {
                 vector<PII> comp;
                 comp.push_back(MKP(x,y));
                 visit[idx] = k;
@@ -321,7 +321,7 @@ vector<COMP_PTR> BaseHouse::_find_components(int x1, int y1, int x2, int y2, boo
                                 is_open = true;
                                 continue;
                             }
-                            int nxt_idx = INDEX(tx,ty,n);
+                            int nxt_idx = INDEX(tx,ty,sz);
                             if (visit.count(nxt_idx) == 0) {
                                 visit[nxt_idx] = k;
                                 comp.push_back(MKP(tx, ty));
@@ -566,4 +566,3 @@ PYBIND11_MODULE(base_house, m) {
         .def_readonly("obsMap", &BaseHouse::obsMap)
         .def_readonly("moveMap", &BaseHouse::moveMap);
 }
-

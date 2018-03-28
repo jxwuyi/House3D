@@ -343,7 +343,7 @@ class Environment():
 
 
 class MultiHouseEnv(Environment):
-    def __init__(self, api, houses, config, seed=None):
+    def __init__(self, api, houses, config, seed=None, parallel_init=True):
         """
         Args:
             houses: a list of house id or `House` instance.
@@ -352,11 +352,15 @@ class MultiHouseEnv(Environment):
         ts = time.time()
         if not isinstance(houses, list):
             houses = [houses]
-        from multiprocessing import Pool
-        _args = [(h, config) for h in houses]
         k = len(houses)
-        with Pool(k) as pool:
-            self.all_houses = pool.starmap(local_create_house, _args)  # parallel version for initialization
+        self.all_houses = []
+        if parallel_init:
+            from multiprocessing import Pool
+            _args = [(h, config) for h in houses]
+            with Pool(k) as pool:
+                self.all_houses = pool.starmap(local_create_house, _args)  # parallel version for initialization
+        else:
+            self.all_houses = [local_create_house(h, config) for h in houses]
         print('  >> Done! Time Elapsed = %.4f(s)' % (time.time() - ts))
         for i, h in enumerate(self.all_houses):
             h._id = i
