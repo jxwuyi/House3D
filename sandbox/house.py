@@ -29,6 +29,10 @@ ALLOWED_TARGET_ROOM_TYPES = ['kitchen', 'dining_room', 'living_room', 'bathroom'
 ALLOWED_OBJECT_TARGET_TYPES = ['shower', 'sofa', 'toilet', 'bed', 'plant', 'television', 'table_and_chair',
                                'chair', 'table', 'kitchen_set', 'bathtub', 'vehicle', 'pool', 'kitchen_cabinet', 'curtain']
 
+
+#ALLOWED_OBJECT_TARGET_TYPES = ['shower', 'sofa', 'toilet', 'bed', 'television',
+#                               'table', 'kitchen_set', 'bathtub', 'vehicle', 'pool', 'kitchen_cabinet']
+
 # allowed room types for auxiliary prediction task
 ALLOWED_PREDICTION_ROOM_TYPES = dict(
     outdoor=0, indoor=1, kitchen=2, dining_room=3, living_room=4, bathroom=5, bedroom=6, office=7, storage=8)
@@ -352,9 +356,25 @@ class House(BaseHouse):
                 [(room['bbox']['min'][0], room['bbox']['min'][2], room['bbox']['max'][0], room['bbox']['max'][2])
                  for room in self.all_rooms if any([ _equal_room_tp(tp, targetRoomTp) for tp in room['roomTypes']])]
         else:
+            def _get_valid_expansion(x1,y1,x2,y2,rg):
+                cx,cy = (x1+x2) * 0.5, (y1+y2) * 0.5
+                covered_rooms = \
+                    [(room['bbox']['min'][0], room['bbox']['min'][2], room['bbox']['max'][0], room['bbox']['max'][2])
+                        for room in self.all_rooms if (room['bbox']['min'][0] < cx) and (room['bbox']['min'][2] < y1) \
+                                                      and (room['bbox']['max'][0] > cx) and (room['bbox']['max'][2] > cy)]
+                x_lo,y_lo,x_hi,y_hi = self.L_lo,self.L_lo,self.L_hi,self.L_hi
+                for rx1,ry1,rx2,ry2 in covered_rooms:
+                    x_lo = max(x_lo, rx1)
+                    y_lo = max(y_lo, ry1)
+                    x_hi = min(x_hi, rx2)
+                    y_hi = min(y_hi, ry2)
+                x_lo = max(x_lo, x1-rg)
+                y_lo = max(y_lo, y1-rg)
+                x_hi = min(x_hi, x2+rg)
+                y_hi = min(y_hi, y2+rg)
+                return (x_lo,y_lo,x_hi,y_hi)
             targetRooms = \
-                [(max(x1-self.objTargetRange, self.L_lo), max(y1-self.objTargetRange, self.L_lo),
-                  min(x2+self.objTargetRange, self.L_hi), min(y2+self.objTargetRange, self.L_hi))
+                [_get_valid_expansion(x1,y1,x2,y2,self.objTargetRange)
                  for x1,y1,x2,y2 in self.tar_obj_region[targetRoomTp]]
         assert (len(targetRooms) > 0), '[House] no target type <{}> in the current house!'.format(targetRoomTp)
 
@@ -451,6 +471,7 @@ class House(BaseHouse):
         avail_types = list(self.all_desired_targetTypes)
         for t in avail_types:
             self.setTargetRoom(t)
+        self.init_graph()
         self.setTargetRoom(self.default_roomTp)
 
     """
@@ -463,6 +484,7 @@ class House(BaseHouse):
                       (obj['bbox']['min'][1] < self.robotHei) and (obj['bbox']['max'][1] > self.carpetHei)
                       and (obj['modelId'] in self.id_to_tar)]
         for obj, cat in target_obj:
+            if cat not in ALLOWED_OBJECT_TARGET_TYPES: continue
             _x1, _, _y1 = obj['bbox']['min']
             _x2, _, _y2 = obj['bbox']['max']
             if cat not in self.tar_obj_region:
@@ -655,6 +677,27 @@ class House(BaseHouse):
     """
     def collision_check_slow(self, pA, pB, num_samples):
         return self._full_collision_check(pA[0], pA[1], pB[0], pB[1], num_samples)
+
+    #######################
+    # GRAPH functionality #
+    #######################
+    def init_graph(self):
+        ret = self._gen_target_graph(len(self.all_desired_targetTypes) - len(self.all_desired_roomTypes))
+        if ret <= 0:
+            print('[House] ERROR when building object graph!')
+        print("Connectivity Graph Built!")
+
+    def get_target_mask(self, cx, cy):
+        tags = self._get_target_mask_names(cx, cy, False)
+        return tags
+
+    def get_optimal_plan(self, cx, cy, target):
+        assert target in self.all_desired_targetTypes
+        plan = self._compute_target_plan(cx, cy, target)
+        assert(len(plan) > 0)
+        dist = self._get_target_plan_dist(cx, cy, plan)
+        return [(p, d) for p, d in zip(plan, dist)]
+
 
     #######################
     # DEBUG functionality #

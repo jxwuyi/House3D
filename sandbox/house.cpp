@@ -63,7 +63,24 @@ private:
     vector<vector<tuple<int,int> > > regValidCoorsLis;
     vector<tuple<int,int> >* last_regValidCoors;
     map<string, int> targetInd;  // index for targets <connMapLis, inroomDistLis, connCoorsLis, maxConnDistLis>
+    vector<string> targetNames;  // list of target names
     map<string, int> regionInd; // index for <regValidCoorsLis>
+    vector<string> regionNames; // list of region names
+
+    ////////////////////////////////////////
+    // for connectivity
+    int n_obj, n_target, n_room;
+    py::array_t<int> targetMask;   // the mask of whether this cell belongs to a target
+    vector<vector<int> > targetDist;  // pairwise distance over targets
+public:
+    int _gen_target_graph(int _n_obj);  // return the total number of targets
+    vector<string> _compute_target_plan(double cx, double cy, const string& target);
+    vector<double> _get_target_plan_dist(double cx, double cy, const vector<string>& plan);
+    int _get_target_mask(double cx, double cy, bool only_object=false);
+    vector<string> _get_target_mask_names(double cx, double cy, bool only_object=false);
+
+private:
+    ////////////////////////////////////////
     // find connected components
     //   -> when return_open == true, return only open-components
     //      ---> when no open components, will automatically set return_largest <- true
@@ -295,6 +312,177 @@ public:
     }
 };
 
+///////////////////////////////
+// build connectivity graph
+///////////////////////////////
+// init graph
+int BaseHouse::_gen_target_graph(int _n_obj) {
+  // assume in <targetNames>
+  //     targetNames[0:n_target - n_obj] are rooms
+  //     targetNames[-n_obj:] are object targets
+  this->n_obj = _n_obj;
+  this->n_target = connMapLis.size();
+  this->n_room = n_target - n_obj;
+
+  if (n_target > 30) {
+    cerr << "[ERROR] We currently only support building object graph over *AT MOST* 30 objects!!!" << endl;
+    return -1;
+  }
+
+  // build masks
+  int m = obsMap.shape(0);
+  targetMask = py::array_t<int>({m, m}, _get_mem<int>(m*m+2));
+  for(int pt = 0; pt < n_target; ++ pt) {
+    auto& coors = connCoorsLis[pt];
+    auto& connMap = connMapLis[pt];
+    for(auto& c: coors) {
+      int x, y;
+      tie(x,y) = c;
+      if (*connMap.data(x,y) > 0) break;
+      *targetMask.mutable_data(x,y) |= (1 << pt);
+    }
+  }
+
+  // build connectivity graph
+  targetDist.clear();
+  for(int pt = 0; pt < n_target; ++ pt) {
+    vector<int> cur_dist(n_target, -1);
+    auto& coors = connCoorsLis[pt];
+    auto& connMap = connMapLis[pt];
+    int remain_mask = (1 << n_target) - 1;
+    cur_dist[pt] = 0;
+    remain_mask ^= 1 << pt;
+    for (auto& c: coors) {
+      int x, y;
+      tie(x, y) = c;
+      int mask = *targetMask.data(x,y) & remain_mask;  // list of targets associated to the gird(x,y)
+      remain_mask ^= mask;   // the targets that needs to update its distance
+      for(; mask > 0; mask &= mask - 1) {
+        int i = __builtin_ctz(mask);
+        cur_dist[i] = *connMap.data(x,y);
+      }
+      if (remain_mask == 0) break;  // no target needs to update distance
+    }
+    targetDist.push_back(cur_dist);
+  }
+
+  // return the total number of targets
+  return this->n_target;
+}
+
+// compute the optimal object level plan to the target
+vector<string> BaseHouse::_compute_target_plan(double cx, double cy, const string& target) {
+  auto iter = targetInd.find(target);
+  if (iter == targetInd.end()) {
+    cerr << "[ERROR] Invalid Target <"<<target<<">! Distance Map Not Cached Yet!" << endl;
+    return vector<string>();
+  }
+
+  int tar_ind = iter->second;
+  vector<int> cur_dist(n_target, -1);
+  vector<int> cur_steps(n_target, -1);
+  vector<int> prev_node(n_target, -1);
+  int ssp_mask = (1 << n_target) - 1;
+  int gx, gy;
+  tie(gx, gy) = _to_grid(cx, cy, n);
+  for(int i=0;i<n_target;++i) {
+    auto& connMap = connMapLis[i];
+    if (*connMap.data(gx, gy) >= 0) {
+      cur_dist[i] = *connMap.data(gx, gy);
+      cur_steps[i] = 1;
+      prev_node[i] = -10;  // indicating the starting grid
+    }
+  }
+  // Dijkstra SSP algorithm
+  for (int i=0;i<n_target;++i) {
+    int p = -1;
+    for (int tmask = ssp_mask; tmask > 0; tmask &= tmask - 1) {
+      int j = __builtin_ctz(tmask);
+      if (cur_dist[j] < 0) continue;
+      if (p < 0 || cur_dist[j] < cur_dist[p]
+          || (cur_dist[j] == cur_dist[p] && cur_steps[j] < cur_steps[p])) p = j;
+    }
+    if (p < 0 || p == tar_ind) break;
+    ssp_mask ^= 1 << p;
+    if (p < n_room) {
+      // a room can only be a final destination
+      continue;
+    }
+    // this is an object
+    for (int tmask = ssp_mask; tmask > 0; tmask &= tmask - 1) {
+      int j = __builtin_ctz(tmask);
+      if (targetDist[p][j] < 0) continue;
+      int t_dist = targetDist[p][j] + cur_dist[p];
+      int t_steps = cur_steps[p] + 1;
+      if (cur_dist[j] < 0 || cur_dist[j] > t_dist
+          || (cur_dist[j] == t_dist && cur_steps[j] > t_steps)) {
+        cur_dist[j] = t_dist;
+        cur_steps[j] = t_steps;
+        prev_node[j] = p;
+      }
+    }
+  }
+  if (cur_dist[tar_ind] < 0) {
+    cerr << "[ERROR] <BaseHouse::_compute_target_plan> Target <"<<target<<"> Not Connected from Coor<"<<cx<<","<<cy<<">!!" << endl;
+    return vector<string>();
+  }
+  // retrieve the optimal plan
+  vector<string> path;
+  for (int p = tar_ind; p >= 0; p = prev_node[p]) path.push_back(targetNames[p]);
+  reverse(path.begin(), path.end());
+  return path;
+}
+
+// compute the distances for executing the plan from start points (cx, cy)
+vector<double> BaseHouse::_get_target_plan_dist(double cx, double cy, const vector<string>& plan) {
+  if (plan.size() == 0) return vector<double>();
+  int gx, gy;
+  tie(gx, gy) = _to_grid(cx, cy, n);
+  vector<double> dist;
+  int prev = -1;
+  for(int i=0;i<plan.size();++i) {
+    auto iter = targetInd.find(plan[i]);
+    if (iter == targetInd.end()) {
+      cerr << "[ERROR] <BaseHouse::_get_target_plan_dist> Invalid Plan!! Target Not Found <"<<plan[i]<<">"<<endl;
+      return vector<double>();
+    }
+    int t = iter->second;
+    int d = -1;
+    if (prev < 0)
+      d = *connMapLis[t].data(gx,gy);
+    else
+      d = targetDist[prev][t];
+    if (d < 0) {
+      cerr << "[ERROR] <BaseHouse::_get_target_plan_dist> Target <"<<plan[i]<<"> Not Connected!!!"<<endl;
+      return vector<double>();
+    }
+    dist.push_back(d * grid_det);
+    prev = t;
+  }
+  return dist;
+}
+
+// get the target mask for coor(cx, cy)
+//    when only_object == True, only return object_target bits
+int BaseHouse::_get_target_mask(double cx, double cy, bool only_object) {
+  int gx, gy;
+  tie(gx, gy) = _to_grid(cx, cy, n);
+  int mask = *targetMask.data(gx, gy);
+  if (only_object) mask &= (1 << n_room) - 1;
+  return mask;
+}
+
+// return the target names associated with coor (cx, cy)
+vector<string> BaseHouse::_get_target_mask_names(double cx, double cy, bool only_object) {
+  int mask = this->_get_target_mask(cx, cy, only_object);
+  vector<string> targets;
+  for(; mask > 0; mask &= mask-1)
+    targets.push_back(targetNames[__builtin_ctz(mask)]);
+  return targets;
+}
+
+
+///////////////////////////////
 // find connected components
 vector<COMP_PTR> BaseHouse::_find_components(int x1, int y1, int x2, int y2, bool return_largest, bool return_open) {
     vector<COMP_PTR > all_comps;
@@ -364,6 +552,7 @@ vector<COMP_PTR> BaseHouse::_find_components(int x1, int y1, int x2, int y2, boo
 bool BaseHouse::_genValidCoors(int x1, int y1, int x2, int y2, const string& reg_tag) {
     if (regionInd.count(reg_tag) > 0) return false;
     int k = regValidCoorsLis.size();
+    regionNames.push_back(reg_tag);
     regionInd[reg_tag] = k;
     regValidCoorsLis.push_back(vector<tuple<int,int> >({}));
     auto& coors = regValidCoorsLis[k];
@@ -463,6 +652,7 @@ bool BaseHouse::_genShortestDistMap(const vector<BOX_TP>&boxes, const string& ta
     }
     // create and cache results
     int k = maxConnDistLis.size();
+    targetNames.push_back(tag);
     targetInd[tag] = k;
     maxConnDistLis.push_back(maxConnDist);
     connMapLis.push_back(py::array_t<int>({sz, sz}, new int[sz * sz + 1]));
@@ -518,6 +708,13 @@ PYBIND11_MODULE(base_house, m) {
     m.def("_check_occupy", &BaseHouse::_check_occupy, "re-check whether a *coordinate* is valid for the robot");
     m.def("_full_collision_check", &BaseHouse::_full_collision_check, "slow collision check");
     m.def("_fast_collision_check", &BaseHouse::_fast_collision_check, "fast collision check via moveMap");
+    // Connectivity Graph related
+    m.def("_gen_target_graph", &BaseHouse::_gen_target_graph, "graph: generate target connectivity graph");
+    m.def("_compute_target_plan", &BaseHouse::_compute_target_plan, "graph: compute the optimal plan from a coor to a target");
+    m.def("_get_target_plan_dist", &BaseHouse::_get_target_plan_dist, "graph: get the distances for executing a particular plan");
+    m.def("_get_target_mask", &BaseHouse::_get_target_mask, "graph: get the target mask for a particular coor");
+    m.def("_get_target_mask_names", &BaseHouse::_get_target_mask_names, "graph: get the names of targets associated with a coor");
+
 
     py::class_<BaseHouse>(m, "BaseHouse")
         // Init Function
@@ -558,6 +755,12 @@ PYBIND11_MODULE(base_house, m) {
         .def("_rescale", &BaseHouse::_rescale)
         .def("_to_grid", &BaseHouse::_to_grid)
         .def("_to_coor", &BaseHouse::_to_coor)
+        // Connectivity Graph Related
+        .def("_gen_target_graph", &BaseHouse::_gen_target_graph)
+        .def("_compute_target_plan", &BaseHouse::_compute_target_plan)
+        .def("_get_target_plan_dist", &BaseHouse::_get_target_plan_dist)
+        .def("_get_target_mask", &BaseHouse::_get_target_mask)
+        .def("_get_target_mask_names", &BaseHouse::_get_target_mask_names)
         // Collision Checker
         .def("_check_occupy", &BaseHouse::_check_occupy)
         .def("_full_collision_check", &BaseHouse::_full_collision_check)

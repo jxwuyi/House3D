@@ -35,7 +35,6 @@ time_penalty_reward = 0.1   # penalty for each time step
 delta_reward_coef = 0.5
 speed_reward_coef = 1.0
 
-success_distance_range = 1.5
 success_stay_time_steps = 5
 success_see_target_time_steps = 2   # time steps required for success under the "see" criteria
 
@@ -384,6 +383,20 @@ class RoomNavTask(gym.Env):
 
     def get_current_target(self):
         return self.house.targetRoomTp
+
+    """
+    [Sandbox/Graph] return auxiliary mask
+    """
+    def get_aux_tags(self):
+        cx, cy = self.env.info['loc']
+        return self.house.get_target_mask(cx, cy)
+
+    """
+    [Sandbox/Graph] return optimal plan info
+    """
+    def get_optimal_plan(self):
+        cx, cy = self.env.info['loc']
+        return self.house.get_optimal_plan(cx, cy, self.house.targetRoomTp)
 
     """
     return all the available target room types of the current house

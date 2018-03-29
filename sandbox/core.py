@@ -370,6 +370,7 @@ class MultiHouseEnv(Environment):
     def cache_shortest_distance(self):
         for house in self.all_houses:
             house.cache_all_target()
+            house.init_graph()
 
     @property
     def info(self):
