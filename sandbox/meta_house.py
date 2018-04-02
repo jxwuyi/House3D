@@ -24,22 +24,21 @@ __all__ = ['MetaHouse']
 ######################################
 # allowed target room types
 # NOTE: consider "toilet" and "bathroom" the same thing
-ALLOWED_TARGET_ROOM_TYPES = ['kitchen', 'dining_room', 'living_room', 'bathroom', 'bedroom', 'office', 'storage']
+ALLOWED_TARGET_ROOM_TYPES = ['kitchen', 'dining_room', 'living_room', 'bathroom', 'bedroom', 'office']
 
-ALLOWED_OBJECT_TARGET_TYPES = ['shower', 'sofa', 'toilet', 'bed', 'plant', 'television', 'table_and_chair',
-                               'chair', 'table', 'kitchen_set', 'bathtub', 'vehicle', 'pool', 'kitchen_cabinet', 'curtain']
-
-
-#ALLOWED_OBJECT_TARGET_TYPES = ['shower', 'sofa', 'toilet', 'bed', 'television',
-#                               'table', 'kitchen_set', 'bathtub', 'vehicle', 'pool', 'kitchen_cabinet']
+# special case: <table_and_chair>
+ALLOWED_OBJECT_TARGET_TYPES = ['kitchen_cabinet','sofa','chair','toilet','table', 'sink','wardrobe_cabinet','bed',
+                               'shelving','desk','television','household_appliance','dresser','vehicle','pool',
+                               'table_and_chair']
 
 # allowed room types for auxiliary prediction task
 ALLOWED_PREDICTION_ROOM_TYPES = dict(
-    outdoor=0, indoor=1, kitchen=2, dining_room=3, living_room=4, bathroom=5, bedroom=6, office=7, storage=8)
+    outdoor=0, indoor=1, kitchen=2, dining_room=3, living_room=4, bathroom=5, bedroom=6, office=7)
 
-ALLOWED_OBJECT_TARGET_INDEX = dict({'curtain': 19, 'plant': 9, 'toilet': 7, 'shower': 5, 'kitchen_set': 14, 'table': 13,
-                                    'bathtub': 15, 'vehicle': 16, 'pool': 17, 'bed': 8, 'chair': 12,
-                                    'kitchen_cabinet': 18, 'table_and_chair': 11, 'television': 10, 'sofa': 6})
+ALLOWED_OBJECT_TARGET_INDEX = dict({'sofa': 9, 'desk': 17, 'sink': 13, 'wardrobe_cabinet': 14, 'bed': 15,
+                                    'kitchen_cabinet': 8, 'shelving': 16, 'dresser': 20, 'chair': 10, 'television': 18,
+                                    'toilet': 11, 'vehicle': 21, 'table': 12, 'pool': 22, 'household_appliance': 19,
+                                    'table_and_chair': (10, 12)})
 
 def _equal_room_tp(room, target):
     """
@@ -120,6 +119,7 @@ class MetaHouse(BaseHouse):
     def __init__(self, JsonFile, ObjFile, MetaDataFile,
                  EagleViewRes=0,
                  DebugInfoOn=False,
+                 StorageFile=None,
                  ColideRes=1000,
                  RobotRadius=0.1,
                  RobotHeight=0.75,  # 1.0,
@@ -204,17 +204,122 @@ class MetaHouse(BaseHouse):
         with open(MetaDataFile) as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
-                self.map_model_to_cat[row['model_id']] = row['coarse_grained_class']
+                if row['coarse_grained_class'] in ALLOWED_OBJECT_TARGET_TYPES:
+                    self.map_model_to_cat[row['model_id']] = row['coarse_grained_class']
         self.obj_stats = dict()
-        all_valid_obj = [self.map_model_to_cat[obj['modelId']] for obj in self.all_obj if
-                      (obj['bbox']['min'][1] < self.robotHei) and (obj['bbox']['max'][1] > self.carpetHei)]
-        for cat in all_valid_obj:
+        self.all_valid_obj = [(obj, self.map_model_to_cat[obj['modelId']]) for obj in self.all_obj if
+                              (obj['bbox']['min'][1] < self.robotHei) and (obj['bbox']['max'][1] > self.carpetHei)
+                              and (obj['modelId'] in self.map_model_to_cat)]
+        for _, cat in self.all_valid_obj:
             if cat not in self.obj_stats:
                 self.obj_stats[cat] = 1
             else:
                 self.obj_stats[cat] += 1
         print('>> Total Object Types = {}'.format(len(self.obj_stats)))
+        if EagleViewRes > 0:
+            print("Generating Obstacle Map ...")
+            t_obsMap = np.ones((EagleViewRes + 1, EagleViewRes + 1), dtype=np.uint8)  # a small int is enough
+            self._debugMap = np.ones((EagleViewRes + 1, EagleViewRes + 1), dtype=np.float)
+            self.genObstacleMap(MetaDataFile, gen_debug_map=DebugInfoOn, dest=t_obsMap, n_row=EagleViewRes)
+            self.eagle_map = t_obsMap
+            if StorageFile is not None:
+                with open(StorageFile, 'rb') as f:
+                    pickle.dump([t_obsMap, self._debugMap], f)
+            print('  --> Done! Elapsed = %.2fs' % (time.time() - ts))
+        else:
+            self.eagle_map = None
         print("Total Time Elapsed = %.3f" % (time.time() - ts))
+
+    # TODO: maybe move this to C++ side?
+    def genObstacleMap(self, MetaDataFile, gen_debug_map=True, dest=None, n_row=None):
+        # load all the doors
+        target_match_class = 'nyuv2_40class'
+        target_door_labels = ['door', 'fence', 'arch']
+        door_ids = set()
+        fine_grained_class = 'fine_grained_class'
+        ignored_labels = ['person', 'umbrella', 'curtain', 'basketball_hoop']
+        person_ids = set()
+        window_ids = set()
+        with open(MetaDataFile) as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                if row[target_match_class] in target_door_labels:
+                    door_ids.add(row['model_id'])
+                if row[target_match_class] == 'window':
+                    window_ids.add(row['model_id'])
+                if row[fine_grained_class] in ignored_labels:
+                    person_ids.add(row['model_id'])
+
+        def is_door(obj):
+            if obj['modelId'] in door_ids:
+                return True
+            if (obj['modelId'] in window_ids) and (obj['bbox']['min'][1] < self.carpetHei):
+                return True
+            return False
+
+        solid_obj = [obj for obj in self.all_obj if
+                     (not is_door(obj)) and (obj['modelId'] not in person_ids)]  # ignore person
+        door_obj = [obj for obj in self.all_obj if is_door(obj)]
+        colide_obj = [obj for obj in solid_obj if
+                      obj['bbox']['min'][1] < self.robotHei and obj['bbox']['max'][1] > self.carpetHei]
+        # generate the map for all the obstacles
+        obsMap = dest if dest is not None else self.obsMap
+        if n_row is None:
+            n_row = obsMap.shape[0] - 1
+        x1, y1, x2, y2 = self.rescale(self.L_min_coor[0], self.L_min_coor[2], self.L_max_coor[0], self.L_max_coor[2],
+                                      n_row)  # fill the space of the level
+        fill_region(obsMap, x1, y1, x2, y2, 0)
+        if gen_debug_map and (self._debugMap is not None):
+            fill_region(self._debugMap, x1, y1, x2, y2, 0)
+        # fill boundary of rooms
+        maskRoom = np.zeros_like(obsMap, dtype=np.int8)
+        for wall in self.all_walls:
+            _x1, _, _y1 = wall['bbox']['min']
+            _x2, _, _y2 = wall['bbox']['max']
+            x1, y1, x2, y2 = self.rescale(_x1, _y1, _x2, _y2, n_row)
+            fill_region(obsMap, x1, y1, x2, y2, 1)
+            if gen_debug_map and (self._debugMap is not None):
+                fill_region(self._debugMap, x1, y1, x2, y2, 1)
+            fill_region(maskRoom, x1, y1, x2, y2, 1)
+        # remove all the doors
+        for obj in door_obj:
+            _x1, _, _y1 = obj['bbox']['min']
+            _x2, _, _y2 = obj['bbox']['max']
+            x1, y1, x2, y2 = self.rescale(_x1, _y1, _x2, _y2, n_row)
+            cx = (x1 + x2) // 2
+            cy = (y1 + y2) // 2
+            # expand region
+            if x2 - x1 < y2 - y1:
+                while (x1 - 1 >= 0) and (maskRoom[x1 - 1, cy] > 0):
+                    x1 -= 1
+                while (x2 + 1 < maskRoom.shape[0]) and (maskRoom[x2 + 1, cy] > 0):
+                    x2 += 1
+            else:
+                while (y1 - 1 >= 0) and (maskRoom[cx, y1 - 1] > 0):
+                    y1 -= 1
+                while (y2 + 1 < maskRoom.shape[1]) and (maskRoom[cx, y2 + 1] > 0):
+                    y2 += 1
+            fill_region(obsMap, x1, y1, x2, y2, 0)
+            if gen_debug_map and (self._debugMap is not None):
+                fill_region(self._debugMap, x1, y1, x2, y2, 0)
+
+        # mark all the objects obstacle
+        for obj in colide_obj:
+            _x1, _, _y1 = obj['bbox']['min']
+            _x2, _, _y2 = obj['bbox']['max']
+            x1, y1, x2, y2 = self.rescale(_x1, _y1, _x2, _y2, n_row)
+            fill_region(obsMap, x1, y1, x2, y2, 1)
+            if gen_debug_map and (obj['modelId'] in self.map_model_to_cat) and (self._debugMap is not None):
+                fill_region(self._debugMap, x1, y1, x2, y2, 0.7)   # map objects
+
+        # mark all rooms
+        if gen_debug_map and (self._debugMap is not None):
+            for room in self.all_rooms:
+                if any([any([_equal_room_tp(tp, roomTp) for roomTp in ALLOWED_TARGET_ROOM_TYPES]) for tp in room['roomTypes']]):
+                    _x1, _, _y1 = room['bbox']['min']
+                    _x2, _, _y2 = room['bbox']['max']
+                    x1, y1, x2, y2 = self.rescale(_x1, _y1, _x2, _y2, n_row)
+                    fill_region(self._debugMap, x1, y1, x2, y2, 0.3)  # map objects
 
     @property
     def connMap(self):
@@ -429,84 +534,6 @@ class MetaHouse(BaseHouse):
             if cat not in self.tar_obj_region:
                 self.tar_obj_region[cat] = []
             self.tar_obj_region[cat].append((_x1, _y1, _x2, _y2))
-
-    # TODO: maybe move this to C++ side?
-    def genObstacleMap(self, MetaDataFile, gen_debug_map=True, dest=None, n_row=None):
-        # load all the doors
-        target_match_class = 'nyuv2_40class'
-        target_door_labels = ['door', 'fence', 'arch']
-        door_ids = set()
-        fine_grained_class = 'fine_grained_class'
-        ignored_labels = ['person', 'umbrella', 'curtain', 'basketball_hoop']
-        person_ids = set()
-        window_ids = set()
-        with open(MetaDataFile) as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                if row[target_match_class] in target_door_labels:
-                    door_ids.add(row['model_id'])
-                if row[target_match_class] == 'window':
-                    window_ids.add(row['model_id'])
-                if row[fine_grained_class] in ignored_labels:
-                    person_ids.add(row['model_id'])
-        def is_door(obj):
-            if obj['modelId'] in door_ids:
-                return True
-            if (obj['modelId'] in window_ids) and (obj['bbox']['min'][1] < self.carpetHei):
-                return True
-            return False
-
-        solid_obj = [obj for obj in self.all_obj if (not is_door(obj)) and (obj['modelId'] not in person_ids)]  # ignore person
-        door_obj = [obj for obj in self.all_obj if is_door(obj)]
-        colide_obj = [obj for obj in solid_obj if obj['bbox']['min'][1] < self.robotHei and obj['bbox']['max'][1] > self.carpetHei]
-        # generate the map for all the obstacles
-        obsMap = dest if dest is not None else self.obsMap
-        if n_row is None:
-            n_row = obsMap.shape[0] - 1
-        x1,y1,x2,y2 = self.rescale(self.L_min_coor[0],self.L_min_coor[2],self.L_max_coor[0],self.L_max_coor[2],n_row)  # fill the space of the level
-        fill_region(obsMap,x1,y1,x2,y2,0)
-        if gen_debug_map and (self._debugMap is not None):
-            fill_region(self._debugMap, x1, y1, x2, y2, 0)
-        # fill boundary of rooms
-        maskRoom = np.zeros_like(obsMap,dtype=np.int8)
-        for wall in self.all_walls:
-            _x1, _, _y1 = wall['bbox']['min']
-            _x2, _, _y2 = wall['bbox']['max']
-            x1,y1,x2,y2 = self.rescale(_x1,_y1,_x2,_y2,n_row)
-            fill_region(obsMap, x1, y1, x2, y2, 1)
-            if gen_debug_map and (self._debugMap is not None):
-                fill_region(self._debugMap, x1, y1, x2, y2, 1)
-            fill_region(maskRoom, x1, y1, x2, y2, 1)
-        # remove all the doors
-        for obj in door_obj:
-            _x1, _, _y1 = obj['bbox']['min']
-            _x2, _, _y2 = obj['bbox']['max']
-            x1,y1,x2,y2 = self.rescale(_x1,_y1,_x2,_y2,n_row)
-            cx = (x1 + x2) // 2
-            cy = (y1 + y2) // 2
-            # expand region
-            if x2 - x1 < y2 - y1:
-                while (x1 - 1 >= 0) and (maskRoom[x1-1,cy] > 0):
-                    x1 -= 1
-                while (x2 + 1 < maskRoom.shape[0]) and (maskRoom[x2+1,cy] > 0):
-                    x2 += 1
-            else:
-                while (y1 - 1 >= 0) and (maskRoom[cx,y1-1] > 0):
-                    y1 -= 1
-                while (y2+1 < maskRoom.shape[1]) and (maskRoom[cx,y2+1] > 0):
-                    y2 += 1
-            fill_region(obsMap,x1,y1,x2,y2,0)
-            if gen_debug_map and (self._debugMap is not None):
-                fill_region(self._debugMap, x1, y1, x2, y2, 0.5)
-
-        # mark all the objects obstacle
-        for obj in colide_obj:
-            _x1, _, _y1 = obj['bbox']['min']
-            _x2, _, _y2 = obj['bbox']['max']
-            x1,y1,x2,y2 = self.rescale(_x1,_y1,_x2,_y2,n_row)
-            fill_region(obsMap,x1,y1,x2,y2,1)
-            if gen_debug_map and (self._debugMap is not None):
-                fill_region(self._debugMap, x1, y1, x2, y2, 0.8)
 
 
     def genMovableMap(self):

@@ -16,6 +16,9 @@ roomTargetFile = CFG['roomTargetFile']
 objectTargetFile = CFG['objectTargetFile'] if 'objectTargetFile' in CFG else None
 modelObjectMapFile = CFG['modelObjectMap'] if 'modelObjectMap' in CFG else None
 
+tmp_storage_dir = './storage/'
+eagle_view_resolution = 39
+
 flag_parallel_init = (sys.platform != 'darwin')
 flag_env_set = 'train'
 
@@ -31,11 +34,14 @@ def create_house(houseID, genRoomTypeMap=False, cacheAllTarget=False):
     objFile = prefix + houseID + '/house.obj'
     jsonFile = prefix + houseID + '/house.json'
     cachedFile = genCacheFile(houseID)
+    storageFile = tmp_storage_dir + houseID + '_data.pkl'
     if not os.path.isfile(cachedFile):
         print('Generating Cached Map File for House <{}>!'.format(houseID))
-        house = MetaHouse(jsonFile, objFile, csvFile)
+        house = MetaHouse(jsonFile, objFile, csvFile,
+                          EagleViewRes=eagle_view_resolution, DebugInfoOn=True, StorageFile=storageFile)
     else:
-        house = MetaHouse(jsonFile, objFile, csvFile)
+        house = MetaHouse(jsonFile, objFile, csvFile,
+                          EagleViewRes=eagle_view_resolution, DebugInfoOn=True, StorageFile=storageFile)
     #house = House(jsonFile, objFile, csvFile,
     #              ColideRes=colide_res,
     #              CachedFile=cachedFile, EagleViewRes=default_eagle_resolution,
