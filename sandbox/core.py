@@ -39,7 +39,7 @@ def create_house(houseID, config, cachefile=None):
     return house
 
 def local_create_house(h, config):
-    if not isinstance(h, House):
+    if isinstance(h, str):
         h = create_house(h, config)
     return h
 
@@ -53,7 +53,7 @@ class Environment():
             seed: if not None, set the seed
         """
         self.config = config
-        if not isinstance(house, House):
+        if isinstance(house, str):
             house = create_house(house, config)
         self.house = house
         if not hasattr(house, '_id'):

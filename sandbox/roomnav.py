@@ -105,7 +105,7 @@ class RoomNavTask(gym.Env):
             discrete_action (bool, optional):  when true, use discrete actions; otherwise use continuous actions
         """
         self.env = env
-        assert isinstance(env, Environment), '[RoomNavTask] env must be an instance of Environment!'
+        #assert isinstance(env, Environment), '[RoomNavTask] env must be an instance of Environment!'
         if env.resolution != (120, 90): reset_see_criteria(env.resolution)
         self.resolution = resolution = env.resolution
         assert reward_type in [None, 'none', 'linear', 'indicator', 'delta', 'speed']
