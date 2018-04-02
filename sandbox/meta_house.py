@@ -17,14 +17,14 @@ import pdb
 from base_house import BaseHouse
 #from .base_house_api import BaseHouse
 
-__all__ = ['House']
+__all__ = ['MetaHouse']
 
 ######################################
 # Util Functions
 ######################################
 # allowed target room types
 # NOTE: consider "toilet" and "bathroom" the same thing
-ALLOWED_TARGET_ROOM_TYPES = ['kitchen', 'dining_room', 'living_room', 'bathroom', 'bedroom']  # 'office'
+ALLOWED_TARGET_ROOM_TYPES = ['kitchen', 'dining_room', 'living_room', 'bathroom', 'bedroom', 'office', 'storage']
 
 ALLOWED_OBJECT_TARGET_TYPES = ['shower', 'sofa', 'toilet', 'bed', 'plant', 'television', 'table_and_chair',
                                'chair', 'table', 'kitchen_set', 'bathtub', 'vehicle', 'pool', 'kitchen_cabinet', 'curtain']
@@ -114,22 +114,17 @@ def fill_obj_mask(house, dest, obj, c=1):
     fill_region(dest, x1, y1, x2, y2, c)
 
 
-class House(BaseHouse):
+class MetaHouse(BaseHouse):
     """core class for loading and processing a house from SUNCG dataset
     """
     def __init__(self, JsonFile, ObjFile, MetaDataFile,
-                 CachedFile=None,
-                 StorageFile=None,
-                 GenRoomTypeMap=False,
                  EagleViewRes=0,
                  DebugInfoOn=False,
                  ColideRes=1000,
                  RobotRadius=0.1,
                  RobotHeight=0.75,  # 1.0,
                  CarpetHeight=0.15,
-                 MapTargetCatFile=None,
                  ObjectTargetSuccRange = 1.5,
-                 _IgnoreSmallHouse=False  # should be only set true when called by "cache_houses.py"
                  ):
         """Initialization and Robot Parameters
 
@@ -151,7 +146,7 @@ class House(BaseHouse):
             RobotHeight (double, optional): height of the robot/agent (generally should not be changed)
             CarpetHeight (double, optional): maximum height of the obstacles that agent can directly go through (gennerally should not be changed)
         """
-        super(House, self).__init__(ColideRes)  # initialize parent class
+        super(MetaHouse, self).__init__(ColideRes)  # initialize parent class
 
         ts = time.time()
         print('Data Loading ...')
@@ -193,89 +188,33 @@ class House(BaseHouse):
         self.all_rooms = [node for node in level['nodes'] if (node['type'].lower() == 'room') and ('roomTypes' in node)]
         self.all_roomTypes = [room['roomTypes'] for room in self.all_rooms]
         self.all_desired_roomTypes = []
+        self.room_stats = dict()
         self.default_roomTp = None
         for roomTp in ALLOWED_TARGET_ROOM_TYPES:
-            if any([any([_equal_room_tp(tp, roomTp) for tp in tps]) for tps in self.all_roomTypes]):
+            c = sum([any([_equal_room_tp(tp, roomTp) for tp in tps]) for tps in self.all_roomTypes])
+            if c > 0:
                 self.all_desired_roomTypes.append(roomTp)
+                self.room_stats[roomTp] = c
                 if self.default_roomTp is None: self.default_roomTp = roomTp
         assert self.default_roomTp is not None, 'Cannot Find Any Desired Rooms!'
         print('>> Target Room Type Selected = {}'.format(self.default_roomTp))
-        self.tar_obj_region = dict()
-        self.all_desired_targetObj = []
-        self.id_to_tar = dict()
-        if MapTargetCatFile is not None:
-            print('Preparing Target Object List ...')
-            self.genTargetObjectList(MapTargetCatFile)
-            self.all_desired_targetObj = list(self.tar_obj_region.keys())
-            print('>> Total Target Object Types = <N={}> {}'.format(len(self.all_desired_targetObj),
-                                                                    self.all_desired_targetObj))
-        self.all_desired_targetTypes = self.all_desired_roomTypes + self.all_desired_targetObj
 
-        print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
-        if _IgnoreSmallHouse and ((len(self.all_desired_roomTypes) < 2) or ('kitchen' not in self.all_desired_roomTypes)):
-            self.all_desired_roomTypes = []
-            return
-
-        print('Generating Low Resolution Obstacle Map ...')
-        ts = time.time()
-        # generate a low-resolution obstacle map
-        self.tinyObsMap = np.ones((self.eagle_n_row, self.eagle_n_row), dtype=np.uint8)
-        self.eagleMap = np.zeros((4, self.eagle_n_row, self.eagle_n_row), dtype=np.uint8)
-        if self.eagle_n_row > 1:
-            self.genObstacleMap(MetaDataFile, gen_debug_map=False, dest=self.tinyObsMap, n_row=self.eagle_n_row-1)
-            self.eagleMap[0, ...] = self.tinyObsMap
-        print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
-
-        # load from cache
-        if CachedFile is not None:
-            assert not DebugInfoOn, 'Please set DebugInfoOn=True when loading data from cached file!'
-            print('Loading Obstacle Map and Movability Map From Cache File ...')
-            ts = time.time()
-            with open(CachedFile, 'rb') as f:
-                t_obsMap, t_moveMap = pickle.load(f)
-            self._setObsMap(t_obsMap)
-            self._setMoveMap(t_moveMap)
-            del t_obsMap
-            del t_moveMap
-            print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
-        else:
-            # generate obstacle map
-            print('Generate High Resolution Obstacle Map (For Collision Check) ...')
-            ts = time.time()
-            # obsMap was indexed by (x, y), not (y, x)
-            t_obsMap = np.ones((self.n_row+1, self.n_row+1), dtype=np.uint8)  # a small int is enough
-            if self._debugMap is not None:
-                self._debugMap = np.ones((self.n_row+1, self.n_row+1), dtype=np.float)
-            self.genObstacleMap(MetaDataFile, dest=t_obsMap)
-            self._setObsMap(t_obsMap)
-            del t_obsMap
-            print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
-            # generate movability map for robots considering the radius
-            print('Generate Movability Map ...')
-            ts = time.time()
-            self.genMovableMap()
-            print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
-
-            if StorageFile is not None:
-                print('Storing Obstacle Map and Movability Map to Cache File ...')
-                ts = time.time()
-                with open(StorageFile, 'wb') as f:
-                    pickle.dump([self.obsMap, self.moveMap], f)
-                print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
-
-        # set target room connectivity
-        print('Generate Target connectivity Map (Default <{}>) ...'.format(self.default_roomTp))
-        ts = time.time()
-        self.targetRoomTp = None
-        self.setTargetRoom(self.default_roomTp)  # _setEagleMap=(self.eagle_n_row>0)
-        print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
-
-        self.roomTypeMap = None
-        if GenRoomTypeMap:
-            ts = time.time()
-            print('Generate Room Type Map ...')
-            self._generate_room_type_map()
-            print('  --> Done! Elapsed = %.2fs' % (time.time() - ts))
+        print('Preparing Target Object List ...')
+        self.map_model_to_cat = dict()
+        with open(MetaDataFile) as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                self.map_model_to_cat[row['model_id']] = row['coarse_grained_class']
+        self.obj_stats = dict()
+        all_valid_obj = [self.map_model_to_cat[obj['modelId']] for obj in self.all_obj if
+                      (obj['bbox']['min'][1] < self.robotHei) and (obj['bbox']['max'][1] > self.carpetHei)]
+        for cat in all_valid_obj:
+            if cat not in self.obj_stats:
+                self.obj_stats[cat] = 1
+            else:
+                self.obj_stats[cat] += 1
+        print('>> Total Object Types = {}'.format(len(self.obj_stats)))
+        print("Total Time Elapsed = %.3f" % (time.time() - ts))
 
     @property
     def connMap(self):
