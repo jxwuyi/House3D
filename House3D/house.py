@@ -145,6 +145,8 @@ class House(object):
             RobotRadius (double, optional): radius of the robot/agent (generally should not be changed)
             RobotHeight (double, optional): height of the robot/agent (generally should not be changed)
             CarpetHeight (double, optional): maximum height of the obstacles that agent can directly go through (gennerally should not be changed)
+            MapTargetCatFile (str, required when using object target): file name of the target object category file (object_target_map.csv)
+            ObjectTargetSuccRange (double, optional): range for determining success of finding a object target
             SetTarget (bool, optional): whether or not to choose a default target room and pre-compute the valid locations
         """
         ts = time.time()
