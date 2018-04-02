@@ -67,9 +67,9 @@ make && make install
 Install EGL headers (the headers in apt is too old):
 ```
 cd INSTALL_DIR
-wget https://www.khronos.org/registry/EGL/api/EGL/egl.h
-wget https://www.khronos.org/registry/EGL/api/EGL/eglext.h
-wget https://www.khronos.org/registry/EGL/api/EGL/eglplatform.h
+wget -P EGL https://www.khronos.org/registry/EGL/api/EGL/egl.h
+wget -P EGL https://www.khronos.org/registry/EGL/api/EGL/eglext.h
+wget -P EGL https://www.khronos.org/registry/EGL/api/EGL/eglplatform.h
 ```
 When compiling the library later, remember to use `INCLUDE_DIR=-I/path/to/INSTALL_DIR make`.
 
@@ -124,3 +124,7 @@ environment, and how you build.
 ### Common Issues:
 1. `Assertion "glGetString(GL_VERSION)" FAILED`: try building with libglvnd as mentioned above
 2. `undefined symbol: _ZTVNSt7__cxx1119basic_ostringstreamIcSt11char_traitsIcESaIcEEE` C++ ABI incompatibility.
+3. X server error: don't ssh with X forwarding. Make sure there is no "DISPLAY" environment variable.
+4. "Framebuffer is not complete" after opening many renderer: there seems to be a hard limit, depending on the hardwares,
+	on the number of rendering context you can use at the same time.
+5. "dynamic module does not define init function": compile-time and run-time python version does not match.
