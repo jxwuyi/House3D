@@ -19,7 +19,7 @@ modelObjectMapFile = CFG['modelObjectMap'] if 'modelObjectMap' in CFG else None
 flag_parallel_init = False
 flag_env_set = 'test' #'small'   # 'train'
 
-flag_object_success_range = 0.3
+flag_object_success_range = 1.0
 
 """
 all_houseIDs = ['00065ecbdd7300d35ef4328ffe871505',
@@ -47,12 +47,14 @@ def create_house(houseID, genRoomTypeMap=False, cacheAllTarget=False):
         house = House(jsonFile, objFile, csvFile,
                       StorageFile=cachedFile, GenRoomTypeMap=genRoomTypeMap,
                       MapTargetCatFile=modelObjectMapFile,
-                      ObjectTargetSuccRange=flag_object_success_range)
+                      ObjectTargetSuccRange=flag_object_success_range,
+                      IncludeOutdoorTarget=True)
     else:
         house = House(jsonFile, objFile, csvFile,
                       CachedFile=cachedFile, GenRoomTypeMap=genRoomTypeMap,
                       MapTargetCatFile=modelObjectMapFile,
-                      ObjectTargetSuccRange=flag_object_success_range)
+                      ObjectTargetSuccRange=flag_object_success_range,
+                      IncludeOutdoorTarget=True)
     #house = House(jsonFile, objFile, csvFile,
     #              ColideRes=colide_res,
     #              CachedFile=cachedFile, EagleViewRes=default_eagle_resolution,
@@ -92,7 +94,7 @@ def create_house_from_index(k, genRoomTypeMap=False, cacheAllTarget=False):
 if __name__ == '__main__':
     print('Start Generating House ....')
     ts = time.time()
-    num_houses = 10
+    num_houses = 15
     #all_houses = create_house_from_index(-num_houses, cacheAllTarget=True)
     #all_houses = all_houseIDs[:num_houses]
     all_houses = create_house_from_index(-num_houses, cacheAllTarget=True)
@@ -100,7 +102,7 @@ if __name__ == '__main__':
     api = objrender.RenderAPI(w=400, h=300, device=0)
     env = MultiHouseEnv(api, all_houses, config=CFG, parallel_init=flag_parallel_init)
     #env = Environment(api, all_houses[0], config=CFG)
-    task = RoomNavTask(env, hardness=0.6, discrete_action=True, include_object_target=True)
+    task = RoomNavTask(env, hardness=0.6, reward_type='new', max_birthplace_steps=30, discrete_action=True, include_object_target=True)
     dur = time.time() - ts
     print('  --> Time Elapsed = %.6f (s)' % dur)
 
@@ -121,7 +123,7 @@ if __name__ == '__main__':
         step = 0
         rew = 0
         good = 0
-        task.reset(target='any-room')
+        task.reset(target='any-object')
         target = task.info['target_room']
         while True:
             print('Step#%d, Instruction = <go to %s>' % (step, target))
@@ -143,7 +145,7 @@ if __name__ == '__main__':
             obs, reward, done, info = task.step(action_dict[key])
             rew += reward
             print('>> r = %.2f, done = %f, accu_rew = %.2f, step = %d' % (reward, done, rew, step))
-            print('   info: collision = %d, raw_dist = %d, scaled_dist = %.3f' % (info['collision'], info['dist'], info['scaled_dist']))
+            print('   info: collision = %d, raw_dist = %d, scaled_dist = %.3f, opt_steps = %d' % (info['collision'], info['dist'], info['scaled_dist'], info['optsteps']))
 
             #############
             # Plan Info

@@ -46,7 +46,7 @@ new_reward_coef = 1.0
 new_reward_bound = 0.5
 new_leave_penalty = 1
 new_stay_room_reward = 0.05
-new_success_stay_time_steps = 5
+new_success_stay_time_steps = 4
 new_success_reward = 10
 new_pixel_object_reward = 0.1
 #####################################
@@ -216,15 +216,22 @@ class RoomNavTask(gym.Env):
         elif target == 'any-room':
             desired_target_list = self.house.all_desired_roomTypes
             target = random.choice(desired_target_list)
+        elif target == 'any-object':
+            desired_target_list = self.house.all_desired_targetObj
+            target = random.choice(desired_target_list)
         #else:
         #    assert target in desired_target_list, '[RoomNavTask] desired target <{}> does not exist in the current house!'.format(target)
         if self.house.setTargetRoom(target):  # target room changed!!!
             _id = self.house._id
             if self.house.targetRoomTp not in self._availCoorsSizeDict[_id]:
-                if self.hardness is None:
+                if (self.hardness is None) and (self.max_birthplace_steps is None):
                     self.availCoorsSize = self.house.getConnectedLocationSize()
                 else:
-                    allowed_dist = int(self.house.maxConnDist * self.hardness + 1e-10)
+                    allowed_dist = self.house.maxConnDist
+                    if self.hardness is not None:
+                        allowed_dist = min(int(self.house.maxConnDist * self.hardness + 1e-10), allowed_dist)
+                    if self.max_birthplace_steps is not None:
+                        allowed_dist = min(self.house.getAllowedGridDist(self.max_birthplace_steps * self.move_sensitivity), allowed_dist)
                     self.availCoorsSize = self.house.getConnectedLocationSize(max_allowed_dist=allowed_dist)
                 self._availCoorsSizeDict[_id][self.house.targetRoomTp] = self.availCoorsSize
             else:
@@ -447,7 +454,7 @@ class RoomNavTask(gym.Env):
             if hardness is not None:
                 allowed_dist = min(int(self.house.maxConnDist * hardness + 1e-10), allowed_dist)
             if max_birthplace_steps is not None:
-                allowed_dist = min(self.house.getAllowedGridDist(max_birthplace_steps * default_move_sensitivity), allowed_dist)
+                allowed_dist = min(self.house.getAllowedGridDist(max_birthplace_steps * self.move_sensitivity), allowed_dist)
             self.availCoorsSize = self.house.getConnectedLocationSize(max_allowed_dist=allowed_dist)
         n_house = self.env.num_house
         self._availCoorsSizeDict = [dict() for _ in range(n_house)]
@@ -538,7 +545,7 @@ if __name__ == '__main__':
             obs, reward, done, info = task.step(action_dict[key])
             rew += reward
             print('>> r = %.2f, done = %f, accu_rew = %.2f, step = %d' % (reward, done, rew, step))
-            print('   info: collision = %d, raw_dist = %d, scaled_dist = %.3f' % (info['collision'], info['dist'], info['scaled_dist']))
+            print('   info: collision = %d, raw_dist = %d, scaled_dist = %.3f, optsteps = %d' % (info['collision'], info['dist'], info['scaled_dist'], info['optsteps']))
             if done:
                 good = 1
                 print('Congratulations! You reach the Target!')

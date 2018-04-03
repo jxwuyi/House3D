@@ -708,10 +708,10 @@ bool BaseHouse::_genOutsideDistMap(const vector<BOX_TP>&boxes, const string& tag
                     que.push_back(MKP(tx,ty));
                     connMap[INDEX(tx,ty,sz)] = 0;
                 } else
-                if (connMap[INDEX(tx,ty,sz)] == -2) {
-                    inside.push_back(MKP(tx,ty));
-                    connMap[INDEX(tx,ty,sz)] = 1;
-                }
+                  if (connMap[INDEX(tx,ty,sz)] == -2) {
+                      inside.push_back(MKP(tx,ty));
+                      connMap[INDEX(tx,ty,sz)] = 1;
+                  }
             }
         }
     }

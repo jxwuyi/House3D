@@ -430,7 +430,7 @@ class House(BaseHouse):
                 x1,y1,x2,y2 = self.rescale(_x1,_y1,_x2,_y2,self.eagleMap.shape[1]-1)
                 self.eagleMap[1, x1:(x2+1), y1:(y2+1)] = inside_val
         # compute shortest distance
-        if targetRoomTp == 'ourdoor':
+        if targetRoomTp == 'outdoor':
             okay_flag = self._genOutsideDistMap(targetRooms, targetRoomTp)
         else:
             okay_flag = self._genShortestDistMap(targetRooms, targetRoomTp)
@@ -533,7 +533,7 @@ class House(BaseHouse):
         with open(MapTargetCatFile, 'r') as f:
             self.id_to_tar = json.load(f)
         target_obj = [(obj, self.id_to_tar[obj['modelId']]) for obj in self.all_obj if
-                      (obj['bbox']['min'][1] < self.robotHei) and (obj['bbox']['max'][1] > self.carpetHei)
+                      (obj['bbox']['min'][1] < self.robotHei * 1.5) and (obj['bbox']['max'][1] > self.carpetHei)
                       and (obj['modelId'] in self.id_to_tar)]
         for obj, cat in target_obj:
             if cat not in ALLOWED_OBJECT_TARGET_TYPES: continue
@@ -552,7 +552,7 @@ class House(BaseHouse):
         target_door_labels = ['door', 'fence', 'arch']
         door_ids = set()
         fine_grained_class = 'fine_grained_class'
-        ignored_labels = ['person', 'umbrella', 'curtain', 'basketball_hoop']
+        ignored_labels = ['person', 'umbrella', 'curtain', 'basketball_hoop', 'indoor_lamp']
         person_ids = set()
         window_ids = set()
         with open(MetaDataFile) as csvfile:
