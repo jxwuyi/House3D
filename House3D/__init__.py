@@ -6,3 +6,4 @@
 from .core import Environment, MultiHouseEnv
 from .common import load_config, create_default_config
 from .house import House
+from .roomnav import RoomNavTask
