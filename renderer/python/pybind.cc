@@ -84,8 +84,58 @@ PYBIND11_MODULE(objrender, m) {
     .value("Down", Camera::Movement::DOWN)
     .export_values();
 
-  py::class_<House>(m, "_House")
-    .def("f", &House::f);
+  py::class_<BaseHouse>(m, "_BaseHouse")
+    // Init Function
+    .def(py::init<int>())
+    .def("_setHouseBox", &BaseHouse::_setHouseBox)
+    // Cache Setter Function
+    .def("_setObsMap", &BaseHouse::_setObsMap)
+    .def("_setMoveMap", &BaseHouse::_setMoveMap)
+    // Core Generation Function
+    // .def("_genObstacleMap", &BaseHouse::_genObstacleMap, py::return_value_policy::reference) // TODO
+    .def("_genMovableMap", &BaseHouse::_genMovableMap)
+    .def("_genShortestDistMap", &BaseHouse::_genShortestDistMap)
+    .def("_genOutsideDistMap", &BaseHouse::_genOutsideDistMap)
+    .def("_genValidCoors", &BaseHouse::_genValidCoors)
+    // Target Dist Map Setter Functions
+    .def("_clearCurrentDistMap", &BaseHouse::_clearCurrentDistMap)
+    .def("_setCurrentDistMap", &BaseHouse::_setCurrentDistMap)
+    // Getter Functions
+    .def("_getConnMap", &BaseHouse::_getConnMap, py::return_value_policy::reference)
+    .def("_getConnCoors", &BaseHouse::_getConnCoors, py::return_value_policy::reference)
+    .def("_getValidCoors", &BaseHouse::_getValidCoors, py::return_value_policy::reference)
+    .def("_getMaxConnDist", &BaseHouse::_getMaxConnDist)
+    // Location Getter Utility Functions
+    .def("_fetchValidCoorsSize", &BaseHouse::_fetchValidCoorsSize)
+    .def("_getCachedIndexedValidCoor", &BaseHouse::_getCachedIndexedValidCoor)
+    .def("_getConnectCoorsSize", &BaseHouse::_getConnectCoorsSize)
+    .def("_getConnectCoorsSize_Bounded", &BaseHouse::_getConnectCoorsSize_Bounded)
+    .def("_getIndexedConnectCoor", &BaseHouse::_getIndexedConnectCoor)
+    .def("_getCurrConnectCoorsSize", &BaseHouse::_getCurrConnectCoorsSize)
+    .def("_getCurrConnectCoorsSize_Bounded", &BaseHouse::_getCurrConnectCoorsSize_Bounded)
+    .def("_getCurrIndexedConnectCoor", &BaseHouse::_getCurrIndexedConnectCoor)
+    // Utility Functions
+    .def("_inside", &BaseHouse::_inside)
+    .def("_canMove", &BaseHouse::_canMove)
+    .def("_isConnect", &BaseHouse::_isConnect)
+    .def("_getDist", &BaseHouse::_getDist)
+    .def("_getScaledDist", &BaseHouse::_getScaledDist)
+    .def("_rescale", &BaseHouse::_rescale)
+    .def("_to_grid", &BaseHouse::_to_grid)
+    .def("_to_coor", &BaseHouse::_to_coor)
+    // Connectivity Graph Related
+    .def("_gen_target_graph", &BaseHouse::_gen_target_graph)
+    .def("_compute_target_plan", &BaseHouse::_compute_target_plan)
+    .def("_get_target_plan_dist", &BaseHouse::_get_target_plan_dist)
+    .def("_get_target_mask", &BaseHouse::_get_target_mask)
+    .def("_get_target_mask_names", &BaseHouse::_get_target_mask_names)
+    // Collision Checker
+    .def("_check_occupy", &BaseHouse::_check_occupy)
+    .def("_full_collision_check", &BaseHouse::_full_collision_check)
+    .def("_fast_collision_check", &BaseHouse::_fast_collision_check)
+    // Member Fields
+    .def_readonly("obsMap", &BaseHouse::obsMap)
+    .def_readonly("moveMap", &BaseHouse::moveMap);
 
   py::class_<glm::vec3>(m, "Vec3")
     .def(py::init<float, float, float>())
