@@ -448,7 +448,7 @@ vector<double> BaseHouse::_get_target_plan_dist(double cx, double cy, const vect
   tie(gx, gy) = _to_grid(cx, cy, n);
   vector<double> dist;
   int prev = -1;
-  for(int i=0;i<plan.size();++i) {
+  for(size_t i=0;i<plan.size();++i) {
     auto iter = targetInd.find(plan[i]);
     if (iter == targetInd.end()) {
       cerr << "[ERROR] <BaseHouse::_get_target_plan_dist> Invalid Plan!! Target Not Found <"<<plan[i]<<">"<<endl;
