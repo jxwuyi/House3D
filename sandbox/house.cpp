@@ -53,16 +53,15 @@ public:
 private:
     int n;
     double L_lo, L_hi, L_det, grid_det, rad;
-    vector<py::array_t<int> > connMapLis, inroomDistLis;
+    vector<py::array_t<int> > connMapLis;
     vector<vector<tuple<int,int> > > connCoorsLis;
     vector<int> maxConnDistLis;
     py::array_t<int>* cur_connMap;
-    py::array_t<int>* cur_inroomDist;
     vector<tuple<int,int> >* cur_connCoors;
     int cur_maxConnDist;
     vector<vector<tuple<int,int> > > regValidCoorsLis;
     vector<tuple<int,int> >* last_regValidCoors;
-    map<string, int> targetInd;  // index for targets <connMapLis, inroomDistLis, connCoorsLis, maxConnDistLis>
+    map<string, int> targetInd;  // index for targets <connMapLis, connCoorsLis, maxConnDistLis>
     vector<string> targetNames;  // list of target names
     map<string, int> regionInd; // index for <regValidCoorsLis>
     vector<string> regionNames; // list of region names
@@ -97,7 +96,7 @@ private:
         return false;
     }
 public:
-    BaseHouse(int resolution): n(resolution), cur_connMap(nullptr), cur_inroomDist(nullptr), cur_connCoors(nullptr) {}
+    BaseHouse(int resolution): n(resolution), cur_connMap(nullptr), cur_connCoors(nullptr) {}
     void _setHouseBox(double _lo, double _hi, double _rad) {
         L_lo = _lo; L_hi = _hi; rad = _rad;
         L_det = _hi - _lo; grid_det = L_det / n;
@@ -142,6 +141,8 @@ public:
     //  --> return whether success (if the region has any open area)
     //  --> input real-coordinates
     bool _genShortestDistMap(const vector<BOX_TP>&boxes, const string& tag);
+    // compute shortest distance map outside the regions in boxes
+    bool _genOutsideDistMap(const vector<BOX_TP>&boxes, const string& tag);
     // compute and cache valid positions in a region
     bool _genValidCoors(int x1, int y1, int x2, int y2, const string& reg_tag);
 
@@ -151,7 +152,6 @@ public:
     // clear and set current distance info
     void _clearCurrentDistMap() {
         cur_connMap = nullptr;
-        cur_inroomDist = nullptr;
         cur_connCoors = nullptr;
         cur_maxConnDist = 0;
     }
@@ -160,7 +160,6 @@ public:
         if (iter == targetInd.end()) return false;
         int k = iter->second;
         cur_connMap = &connMapLis[k];
-        cur_inroomDist = &inroomDistLis[k];
         cur_connCoors = &connCoorsLis[k];
         cur_maxConnDist = maxConnDistLis[k];
         return true;
@@ -171,8 +170,6 @@ public:
     ///////////////////////////
     // get connMap
     py::array_t<int>* _getConnMap() {return cur_connMap;}
-    // get inroomDist
-    py::array_t<int>* _getInroomDist() {return cur_inroomDist;}
     // get connectedCoors
     vector<tuple<int,int> >* _getConnCoors() {return cur_connCoors;}
     // get maxConnDist
@@ -343,10 +340,10 @@ int BaseHouse::_gen_target_graph(int _n_obj) {
     }
   }
 
-  // build connectivity graph
+  // build connectivity graph over all targets
   targetDist.clear();
   for(int pt = 0; pt < n_target; ++ pt) {
-    vector<int> cur_dist(n_target, -1);
+    vector<int> cur_dist(n_target, -1);   // from a room/object to any other room/objects
     auto& coors = connCoorsLis[pt];
     auto& connMap = connMapLis[pt];
     int remain_mask = (1 << n_target) - 1;
@@ -382,9 +379,9 @@ vector<string> BaseHouse::_compute_target_plan(double cx, double cy, const strin
   vector<int> cur_dist(n_target, -1);
   vector<int> cur_steps(n_target, -1);
   vector<int> prev_node(n_target, -1);
-  int ssp_mask = (1 << n_target) - 1;
   int gx, gy;
   tie(gx, gy) = _to_grid(cx, cy, n);
+  // compute the distance to objects
   for(int i=0;i<n_target;++i) {
     auto& connMap = connMapLis[i];
     if (*connMap.data(gx, gy) >= 0) {
@@ -393,8 +390,9 @@ vector<string> BaseHouse::_compute_target_plan(double cx, double cy, const strin
       prev_node[i] = -10;  // indicating the starting grid
     }
   }
-  // Dijkstra SSP algorithm
-  for (int i=0;i<n_target;++i) {
+  // Dijkstra SSP algorithm over rooms
+  int ssp_mask = (1 << n_room) - 1;
+  for (int i=0;i<n_room;++i) {
     int p = -1;
     for (int tmask = ssp_mask; tmask > 0; tmask &= tmask - 1) {
       int j = __builtin_ctz(tmask);
@@ -404,11 +402,6 @@ vector<string> BaseHouse::_compute_target_plan(double cx, double cy, const strin
     }
     if (p < 0 || p == tar_ind) break;
     ssp_mask ^= 1 << p;
-    if (p < n_room) {
-      // a room can only be a final destination
-      continue;
-    }
-    // this is an object
     for (int tmask = ssp_mask; tmask > 0; tmask &= tmask - 1) {
       int j = __builtin_ctz(tmask);
       if (targetDist[p][j] < 0) continue;
@@ -422,6 +415,21 @@ vector<string> BaseHouse::_compute_target_plan(double cx, double cy, const strin
       }
     }
   }
+  // Compute Best Distance to Objects
+  for (int i=0;i<n_room;++i) {
+    if (cur_dist[i] < 0) continue;
+    int t_steps = cur_steps[i] + 1;
+    for(int j=0;j<n_target;++j) {
+      int t_dist = targetDist[i][j] + cur_dist[i];
+      if (cur_dist[j] < 0 || cur_dist[j] > t_dist
+         || (cur_dist[j] == t_dist && cur_steps[j] > t_steps)) {
+        cur_dist[j] = t_dist;
+        cur_steps[j] = t_steps;
+        prev_node[j] = i;
+      }
+    }
+  }
+  // check final distance
   if (cur_dist[tar_ind] < 0) {
     cerr << "[ERROR] <BaseHouse::_compute_target_plan> Target <"<<target<<"> Not Connected from Coor<"<<cx<<","<<cy<<">!!" << endl;
     return vector<string>();
@@ -596,12 +604,10 @@ bool BaseHouse::_genShortestDistMap(const vector<BOX_TP>&boxes, const string& ta
     }
     int sz = n + 1;
     int* connMap = _get_mem<int>(sz*sz+1, -1);
-    int* inroomDist = _get_mem<int>(sz*sz+1, -1);
     vector<PII> que;
     for(auto& box: boxes) {
         double _x1, _y1, _x2, _y2;
         tie(_x1,_y1,_x2,_y2) = box;
-        double cx = 0.5 * (_x1 + _x2), cy = 0.5 * (_y1 + _y2);
         int x1,y1,x2,y2;
         tie(x1,y1,x2,y2) = _rescale(_x1,_y1,_x2,_y2,n);
         vector<COMP_PTR> cur_comps = _find_components(x1, y1, x2, y2, false, true); // find open components;
@@ -610,24 +616,12 @@ bool BaseHouse::_genShortestDistMap(const vector<BOX_TP>&boxes, const string& ta
                             tag.c_str(), _x1, _y1, _x2, _y2);
             continue;
         }
-        double min_dist_to_center = 1e50;
-        size_t stamp = que.size();
         for(auto& comp_pt: cur_comps) {
             for(auto& p: *comp_pt) {
                 int x=p.X, y=p.Y;
                 connMap[INDEX(x,y,sz)]=0;
                 que.push_back(p);
-                double tx, ty;
-                tie(tx, ty) = _to_coor(x,y,false);
-                tx -= cx; ty -= cy;
-                double tdist = sqrt(tx * tx + ty * ty);
-                if (tdist < min_dist_to_center) min_dist_to_center = tdist;
-                inroomDist[INDEX(x,y,sz)] = tdist;
             }
-        }
-        for(size_t i=stamp;i<que.size();++i) {
-            int x=que[i].X, y=que[i].Y;
-            inroomDist[INDEX(x,y,sz)] -= min_dist_to_center;
         }
     }
     if (que.size() == 0) { // fully blocked region
@@ -656,19 +650,105 @@ bool BaseHouse::_genShortestDistMap(const vector<BOX_TP>&boxes, const string& ta
     targetInd[tag] = k;
     maxConnDistLis.push_back(maxConnDist);
     connMapLis.push_back(py::array_t<int>({sz, sz}, new int[sz * sz + 1]));
-    inroomDistLis.push_back(py::array_t<int>({sz, sz}, new int[sz * sz + 1]));
     connCoorsLis.push_back(vector<tuple<int,int>>());
     py::array_t<int> &py_connMap = connMapLis[k];
-    py::array_t<int> &py_inroomDist = inroomDistLis[k];
+    vector<tuple<int,int>> &coors = connCoorsLis[k];
+    for(int i=0;i<sz;++i)
+        for(int j=0;j<sz;++j)
+            *py_connMap.mutable_data(i,j) = connMap[INDEX(i,j,sz)];
+    delete connMap;
+    for(auto&p: que)
+        coors.push_back(make_tuple(p.X, p.Y));
+    return true;
+}
+
+// generate a special region <outside boxes> and build the shortest distance map towards (connMap)
+bool BaseHouse::_genOutsideDistMap(const vector<BOX_TP>&boxes, const string& tag) {
+    if (targetInd.count(tag) > 0) {
+        cerr << "Warning!!! [House] <_genOutsidetDistMap> Invalid tag<" << tag << ">! tag already exists!" << endl;
+        return false;
+    }
+    int sz = n + 1;
+    int* connMap = _get_mem<int>(sz*sz+1, -1);
+    vector<PII> que;
+    for(auto& box: boxes) {
+        double _x1, _y1, _x2, _y2;
+        tie(_x1,_y1,_x2,_y2) = box;
+        int x1,y1,x2,y2;
+        tie(x1,y1,x2,y2) = _rescale(_x1,_y1,_x2,_y2,n);
+        for (int x=x1;x<=x2;++x)
+            for (int y=y1;y<=y2;++y)
+                connMap[INDEX(x,y,sz)] = -2;
+    }
+    for (int x=0;x<sz;++x)
+        for (int y=0;y<sz;++y)
+            if (connMap[INDEX(x,y,sz)] == -2) {
+                for (int d=0;d<4;++d) {
+                    int tx=x+DIRS[d][0], ty=y+DIRS[d][1];
+                    if (_canMove(tx,ty) && connMap[INDEX(tx,ty,sz)] == -1) {
+                        que.push_back(MKP(tx,ty));
+                        connMap[INDEX(tx,ty,sz)] = 0;
+                    }
+                }
+            }
+    if (que.size() == 0) { // fully blocked region
+        cerr << "Error!! [House] No outside space found for tag <" << tag << ">." << endl;
+        return false;
+    }
+    // expand the outside region
+    vector<PII> inside;
+    size_t ptr = 0;
+    while(ptr < que.size()) {
+        int x=que[ptr].X, y=que[ptr].Y;
+        ptr ++;
+        for (int d=0;d<4;++d) {
+            int tx=x+DIRS[d][0], ty=y+DIRS[d][1];
+            if (_canMove(tx,ty)) {
+                if (connMap[INDEX(tx,ty,sz)] == -1) {
+                    que.push_back(MKP(tx,ty));
+                    connMap[INDEX(tx,ty,sz)] = 0;
+                } else
+                if (connMap[INDEX(tx,ty,sz)] == -2) {
+                    inside.push_back(MKP(tx,ty));
+                    connMap[INDEX(tx,ty,sz)] = 1;
+                }
+            }
+        }
+    }
+    // BFS and compute shortest distance
+    ptr = 0;
+    int maxConnDist = 1;
+    while (ptr < inside.size()) {
+        int x=inside[ptr].X, y=inside[ptr].Y;
+        int cur_dist = connMap[INDEX(x,y,sz)];
+        ptr ++;
+        for (int d=0;d<4;++d) {
+            int tx=x+DIRS[d][0], ty=y+DIRS[d][1];
+            if (_canMove(tx,ty) && connMap[INDEX(tx,ty,sz)] == -2) {
+                inside.push_back(MKP(tx,ty));
+                connMap[INDEX(tx,ty,sz)] = cur_dist + 1;
+                if (cur_dist >= maxConnDist) maxConnDist = cur_dist + 1;
+            }
+        }
+    }
+    // create and cache results
+    int k = maxConnDistLis.size();
+    targetNames.push_back(tag);
+    targetInd[tag] = k;
+    maxConnDistLis.push_back(maxConnDist);
+    connMapLis.push_back(py::array_t<int>({sz, sz}, new int[sz * sz + 1]));
+    connCoorsLis.push_back(vector<tuple<int,int>>());
+    py::array_t<int> &py_connMap = connMapLis[k];
     vector<tuple<int,int>> &coors = connCoorsLis[k];
     for(int i=0;i<sz;++i)
         for(int j=0;j<sz;++j) {
-            *py_connMap.mutable_data(i,j) = connMap[INDEX(i,j,sz)];
-            *py_inroomDist.mutable_data(i,j) = inroomDist[INDEX(i,j,sz)];
+            int v = connMap[INDEX(i,j,sz)];
+            *py_connMap.mutable_data(i,j) = (v < 0 ? -1 : v);
         }
     delete connMap;
-    delete inroomDist;
     for(auto&p: que)
+        coors.push_back(make_tuple(p.X, p.Y));
+    for(auto&p: inside)
         coors.push_back(make_tuple(p.X, p.Y));
     return true;
 }
@@ -681,12 +761,12 @@ PYBIND11_MODULE(base_house, m) {
     //m.def("_genObstacleMap", &BaseHouse::_genObstacleMap, "generate the obstacleMap given obstacle information") // TODO
     m.def("_genMovableMap", &BaseHouse::_genMovableMap, "generate movability map and store in moveMap");
     m.def("_genShortestDistMap", &BaseHouse::_genShortestDistMap, "generate and cache shortest distance map from given box ranges for a name tag");
+    m.def("_genOutsideDistMap", &BaseHouse::_genOutsideDistMap, "generate and cache shortest distance map from regions outside the given box ranges for a name tag");
     m.def("_genValidCoors", &BaseHouse::_genValidCoors, "generate and cache valid locations in a given region for a name tag");
     m.def("_clearCurrentDistMap", &BaseHouse::_clearCurrentDistMap, "clear all the current pointers related to distance map");
     m.def("_setCurrentDistMap", &BaseHouse::_setCurrentDistMap, "load the cached information of distance map corresponding to a given name tag");
     m.def("_getConnMap", &BaseHouse::_getConnMap, "get the current connMap");
     m.def("_getConnCoors", &BaseHouse::_getConnCoors, "get the current connectedCoors");
-    m.def("_getInroomDist", &BaseHouse::_getInroomDist, "get the current inroomDist");
     m.def("_getMaxConnDist", &BaseHouse::_getMaxConnDist, "get the current maxConnDist");
     m.def("_getValidCoors", &BaseHouse::_getValidCoors, "get the cached valid locations corresponding to a region_tag");
     m.def("_fetchValidCoorsSize", &BaseHouse::_fetchValidCoorsSize, "cache the valid locations and return the size of it");
@@ -727,6 +807,7 @@ PYBIND11_MODULE(base_house, m) {
         // .def("_genObstacleMap", &BaseHouse::_genObstacleMap, py::return_value_policy::reference) // TODO
         .def("_genMovableMap", &BaseHouse::_genMovableMap)
         .def("_genShortestDistMap", &BaseHouse::_genShortestDistMap)
+        .def("_genOutsideDistMap", &BaseHouse::_genOutsideDistMap)
         .def("_genValidCoors", &BaseHouse::_genValidCoors)
         // Target Dist Map Setter Functions
         .def("_clearCurrentDistMap", &BaseHouse::_clearCurrentDistMap)
@@ -734,7 +815,6 @@ PYBIND11_MODULE(base_house, m) {
         // Getter Functions
         .def("_getConnMap", &BaseHouse::_getConnMap, py::return_value_policy::reference)
         .def("_getConnCoors", &BaseHouse::_getConnCoors, py::return_value_policy::reference)
-        .def("_getInroomDist", &BaseHouse::_getInroomDist, py::return_value_policy::reference)
         .def("_getValidCoors", &BaseHouse::_getValidCoors, py::return_value_policy::reference)
         .def("_getMaxConnDist", &BaseHouse::_getMaxConnDist)
         // Location Getter Utility Functions

@@ -38,6 +38,20 @@ speed_reward_coef = 1.0
 success_stay_time_steps = 5
 success_see_target_time_steps = 2   # time steps required for success under the "see" criteria
 
+######################################
+# reward function parameters for new
+######################################
+new_time_penalty_reward = 0.1   # penalty for each time step
+new_reward_coef = 1.0
+new_reward_bound = 0.5
+new_leave_penalty = 1
+new_stay_room_reward = 0.05
+new_success_stay_time_steps = 5
+new_success_reward = 10
+new_pixel_object_reward = 0.1
+#####################################
+
+
 # sensitivity setting
 rotation_sensitivity = 30  # 45   # maximum rotation per time step
 default_move_sensitivity = 0.5  # 1.0   # maximum movement per time step
@@ -75,6 +89,7 @@ class RoomNavTask(gym.Env):
                  seed=None,
                  reward_type='delta',
                  hardness=None,
+                 max_birthplace_steps=None,
                  move_sensitivity=None,
                  segment_input=True,
                  joint_visual_signal=False,
@@ -91,10 +106,12 @@ class RoomNavTask(gym.Env):
         Args:
             env: an instance of environment (multi-house or single-house)
             seed: if not None, set the random seed
-            reward_type (str, optional): reward shaping, currently available: none, linear, indicator, delta and speed
+            reward_type (str, optional): reward shaping, currently available: none, linear, indicator, delta and speed.
+                                         <new> means temporary reward function under development
             hardness (double, optional): if not None, must be a real number between 0 and 1, indicating the hardness
                                          namely the distance from birthplace to target (1 is the hardest)
                                          None means 1.0
+            max_birthplace_steps (int, optional): if not None, the birthplace will be no further than <this> amount of action steps from target
             move_sensitivity (double, optional): if not None, set the maximum movement per time step (generally should not be changed)
             segment_input (bool, optional): whether to use semantic segmentation mask for observation
             joint_visual_signal (bool, optional): when true, use both visual signal and segmentation mask as observation
@@ -108,7 +125,7 @@ class RoomNavTask(gym.Env):
         #assert isinstance(env, Environment), '[RoomNavTask] env must be an instance of Environment!'
         if env.resolution != (120, 90): reset_see_criteria(env.resolution)
         self.resolution = resolution = env.resolution
-        assert reward_type in [None, 'none', 'linear', 'indicator', 'delta', 'speed']
+        assert reward_type in [None, 'none', 'linear', 'indicator', 'delta', 'speed', 'new']
         self.reward_type = reward_type
         self.colorDataFile = self.env.config['colorFile']
         self.segment_input = segment_input
@@ -141,11 +158,13 @@ class RoomNavTask(gym.Env):
         # configs
         self.move_sensitivity = (move_sensitivity or default_move_sensitivity)  # at most * meters per frame
         self.rot_sensitivity = rotation_sensitivity
-        self.dist_scale = dist_reward_scale or 1
-        self.successRew = success_reward
-        self.inroomRew = stay_room_reward or 0.2
+        self.dist_scale = dist_reward_scale or 1.0
+        self.successRew = success_reward if reward_type != 'new' else new_success_reward
+        self.inroomRew = (stay_room_reward if reward_type != 'new' else new_stay_room_reward) or 0.2
         self.colideRew = collision_penalty_reward or 0.02
         self.goodMoveRew = correct_move_reward or 0.0
+        self.pixelRew = (pixel_object_reward if reward_type != 'new' else new_pixel_object_reward) or 0.0
+        self.succSeeSteps = (success_see_target_time_steps if reward_type != 'new' else new_success_stay_time_steps)
 
         self.last_obs = None
         self.last_info = None
@@ -153,9 +172,10 @@ class RoomNavTask(gym.Env):
 
         # config hardness
         self.hardness = None
+        self.max_birthplace_steps = None
         self.availCoorsSize = None
         self._availCoorsSizeDict = None
-        self.reset_hardness(hardness)
+        self.reset_hardness(hardness, max_birthplace_steps)
 
         # temp storage
         self.collision_flag = False
@@ -169,10 +189,11 @@ class RoomNavTask(gym.Env):
         print('[RoomNavTask] >> Success Measure = <{}>'.format(success_measure))
         self.success_stay_cnt = 0
         if success_measure == 'see':
-            self.room_target_object = dict()
+            self.room_target_object = dict(outdoor=[])  # outdoor is a special category
             self._load_target_object_data(self.env.config['roomTargetFile'])
             if self.include_object_target:
                 self._load_target_object_data(self.env.config['objectTargetFile'])
+
 
     def _load_target_object_data(self, roomTargetFile):
         with open(roomTargetFile) as csvFile:
@@ -264,8 +285,8 @@ class RoomNavTask(gym.Env):
             self.success_stay_cnt += 1
             return self.success_stay_cnt >= success_stay_time_steps
         # self.success_measure == 'see'
-        flag_see_target_objects = False
         object_color_list = self.room_target_object[self.house.targetRoomTp]
+        flag_see_target_objects = (len(object_color_list) > 0)
         if (self.last_obs is not None) and self.segment_input:
             seg_obs = self.last_obs if not self.joint_visual_signal else self.last_obs[:,:,3:6]
         else:
@@ -281,7 +302,7 @@ class RoomNavTask(gym.Env):
             self.success_stay_cnt += 1
         else:
             self.success_stay_cnt = 0  # did not see any target objects!
-        return self.success_stay_cnt >= success_see_target_time_steps
+        return self.success_stay_cnt >= self.succSeeSteps
 
     """
     gym api: step function
@@ -347,11 +368,20 @@ class RoomNavTask(gym.Env):
             det_dist = np.clip(det_dist, -indicator_reward, indicator_reward)
             reward += det_dist
             if raw_dist >= orig_raw_dist: reward -= time_penalty_reward
+        elif self.reward_type == 'new':
+            # utilize delta reward but with different parameters
+            delta_raw_dist = orig_raw_dist - raw_dist
+            ratio = self.move_sensitivity / self.house.grid_det
+            new_reward = delta_raw_dist / ratio * new_reward_coef
+            new_reward = np.clip(new_reward, -new_reward_bound, new_reward_bound)
+            reward += new_reward
+            reward -= time_penalty_reward   # always deduct time penalty
+            if (orig_raw_dist == 0) and (raw_dist > 0): reward -= new_leave_penalty  # big penalty when leave target room
 
         # object seen reward
         if (raw_dist == 0) and (self.success_measure == 'see'):  # inside target room and success measure is <see>
             if not done:
-                object_reward = np.clip((self._object_cnt - n_pixel_for_object_sense) / L_pixel_reward_range, 0., 1.) * pixel_object_reward
+                object_reward = np.clip((self._object_cnt - n_pixel_for_object_sense) / L_pixel_reward_range, 0., 1.) * self.pixelRew
                 reward += object_reward
 
         if self.depth_signal:
@@ -407,15 +437,20 @@ class RoomNavTask(gym.Env):
     """
     reset the hardness of the task
     """
-    def reset_hardness(self, hardness=None):
+    def reset_hardness(self, hardness=None, max_birthplace_steps=None):
         self.hardness = hardness
-        if hardness is None:
+        self.max_birthplace_steps = max_birthplace_steps
+        if (hardness is None) and (max_birthplace_steps is None):
             self.availCoorsSize = self.house.getConnectedLocationSize()
         else:
-            allowed_dist = int(self.house.maxConnDist * hardness + 1e-10)
+            allowed_dist = self.house.maxConnDist
+            if hardness is not None:
+                allowed_dist = min(int(self.house.maxConnDist * hardness + 1e-10), allowed_dist)
+            if max_birthplace_steps is not None:
+                allowed_dist = min(self.house.getAllowedGridDist(max_birthplace_steps * default_move_sensitivity), allowed_dist)
             self.availCoorsSize = self.house.getConnectedLocationSize(max_allowed_dist=allowed_dist)
         n_house = self.env.num_house
-        self._availCoorsSizeDict = [dict() for i in range(n_house)]
+        self._availCoorsSizeDict = [dict() for _ in range(n_house)]
         self._availCoorsSizeDict[self.house._id][self.house.targetRoomTp] = self.availCoorsSize
 
     """

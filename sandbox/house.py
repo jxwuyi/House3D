@@ -24,10 +24,11 @@ __all__ = ['House']
 ######################################
 # allowed target room types
 # NOTE: consider "toilet" and "bathroom" the same thing
-ALLOWED_TARGET_ROOM_TYPES = ['kitchen', 'dining_room', 'living_room', 'bathroom', 'bedroom']  # 'office'
+ALLOWED_TARGET_ROOM_TYPES = ['outdoor', 'kitchen', 'dining_room', 'living_room', 'bathroom', 'bedroom', 'office', 'garage']
 
-ALLOWED_OBJECT_TARGET_TYPES = ['shower', 'sofa', 'toilet', 'bed', 'plant', 'television', 'table_and_chair',
-                               'chair', 'table', 'kitchen_set', 'bathtub', 'vehicle', 'pool', 'kitchen_cabinet', 'curtain']
+ALLOWED_OBJECT_TARGET_TYPES = ['kitchen_cabinet','sofa','chair','toilet','table', 'sink','wardrobe_cabinet','bed',
+                               'shelving','desk','television','household_appliance','dresser','vehicle','pool']
+                               #'table_and_chair']
 
 
 #ALLOWED_OBJECT_TARGET_TYPES = ['shower', 'sofa', 'toilet', 'bed', 'television',
@@ -35,11 +36,12 @@ ALLOWED_OBJECT_TARGET_TYPES = ['shower', 'sofa', 'toilet', 'bed', 'plant', 'tele
 
 # allowed room types for auxiliary prediction task
 ALLOWED_PREDICTION_ROOM_TYPES = dict(
-    outdoor=0, indoor=1, kitchen=2, dining_room=3, living_room=4, bathroom=5, bedroom=6, office=7, storage=8)
+    outdoor=0, kitchen=1, dining_room=2, living_room=3, bathroom=4, bedroom=5, office=6, garage=7)
 
-ALLOWED_OBJECT_TARGET_INDEX = dict({'curtain': 19, 'plant': 9, 'toilet': 7, 'shower': 5, 'kitchen_set': 14, 'table': 13,
-                                    'bathtub': 15, 'vehicle': 16, 'pool': 17, 'bed': 8, 'chair': 12,
-                                    'kitchen_cabinet': 18, 'table_and_chair': 11, 'television': 10, 'sofa': 6})
+ALLOWED_OBJECT_TARGET_INDEX = dict({'sofa': 9, 'desk': 17, 'sink': 13, 'wardrobe_cabinet': 14, 'bed': 15,
+                                    'kitchen_cabinet': 8, 'shelving': 16, 'dresser': 20, 'chair': 10, 'television': 18,
+                                    'toilet': 11, 'vehicle': 21, 'table': 12, 'pool': 22, 'household_appliance': 19})
+                                    #'table_and_chair': (10, 12)})
 
 def _equal_room_tp(room, target):
     """
@@ -50,6 +52,26 @@ def _equal_room_tp(room, target):
     return (room == target) or \
             ((target == 'bathroom') and (room == 'toilet')) or \
             ((target == 'bedroom') and (room == 'guest_room'))
+
+
+def _equal_object_tp(obj, target):
+    """
+    NOTE: Ensure <target> is always from <ALLOWED_OBJECT_TARGET_TYPES>!!!!
+            DO NOT swap the order of arguments
+    """
+    obj = obj.lower()
+    return (obj == target) or \
+           ((target == 'chair') and (obj == 'table_and_chair')) or \
+           ((target == 'table') and (obj == 'table_and_chair'))
+
+
+def _get_object_categories(obj):
+    obj = obj.lower()
+    if obj == 'table_and_chair':
+        return ['table', 'chair']
+    else:
+        return [obj]
+
 
 def _get_pred_room_tp_id(room):
     room = room.lower()
@@ -118,6 +140,7 @@ class House(BaseHouse):
     """core class for loading and processing a house from SUNCG dataset
     """
     def __init__(self, JsonFile, ObjFile, MetaDataFile,
+                 MapTargetCatFile=None,
                  CachedFile=None,
                  StorageFile=None,
                  GenRoomTypeMap=False,
@@ -127,8 +150,9 @@ class House(BaseHouse):
                  RobotRadius=0.1,
                  RobotHeight=0.75,  # 1.0,
                  CarpetHeight=0.15,
-                 MapTargetCatFile=None,
-                 ObjectTargetSuccRange = 1.5,
+                 ObjectTargetSuccRange = 1.0,
+                 SetTarget=True,
+                 IncludeOutdoorTarget=False,
                  _IgnoreSmallHouse=False  # should be only set true when called by "cache_houses.py"
                  ):
         """Initialization and Robot Parameters
@@ -141,6 +165,7 @@ class House(BaseHouse):
             JsonFile (str): file name of the house json file (house.json)
             ObjFile (str): file name of the house object file (house.obj)
             MetaDataFile (str): file name of the meta data (ModelCategoryMapping.csv)
+            MapTargetCatFile (str, required when using object target): file name of the target object category file (map_modelid_to_targetcat.json)
             CachedFile (str, recommended): file name of the pickled cached data for this house, None if no such cache (cachedmap1k.pkl)
             StorageFile (str, optional): if CachedFile is None, pickle all the data and store in this file
             GenRoomTypeMap (bool, optional): if turned on, generate the room type map for each location
@@ -150,6 +175,9 @@ class House(BaseHouse):
             RobotRadius (double, optional): radius of the robot/agent (generally should not be changed)
             RobotHeight (double, optional): height of the robot/agent (generally should not be changed)
             CarpetHeight (double, optional): maximum height of the obstacles that agent can directly go through (gennerally should not be changed)
+            ObjectTargetSuccRange (double, optional): range for determining success of finding a object target
+            SetTarget (bool, optional): whether or not to choose a default target room and pre-compute the valid locations
+            IncludeOutdoorTarget (bool, optional): when true, we allow target room <outdoor> indicating not inside any room regions
         """
         super(House, self).__init__(ColideRes)  # initialize parent class
 
@@ -162,6 +190,7 @@ class House(BaseHouse):
         self.carpetHei = CarpetHeight
         self.robotRad = RobotRadius
         self.objTargetRange = ObjectTargetSuccRange
+        self.includeOutdoorTarget = IncludeOutdoorTarget
         self._debugMap = None if not DebugInfoOn else True
         with open(JsonFile) as jfile:
             self.house = house = json.load(jfile)
@@ -199,7 +228,11 @@ class House(BaseHouse):
                 self.all_desired_roomTypes.append(roomTp)
                 if self.default_roomTp is None: self.default_roomTp = roomTp
         assert self.default_roomTp is not None, 'Cannot Find Any Desired Rooms!'
-        print('>> Target Room Type Selected = {}'.format(self.default_roomTp))
+        # check whether need to include <outdoor>
+        if self.includeOutdoorTarget: self.all_desired_roomTypes.append('outdoor')
+        print('>> Default Target Room Type Selected = {}'.format(self.default_roomTp))
+
+        # prepare object targets
         self.tar_obj_region = dict()
         self.all_desired_targetObj = []
         self.id_to_tar = dict()
@@ -216,19 +249,21 @@ class House(BaseHouse):
             self.all_desired_roomTypes = []
             return
 
-        print('Generating Low Resolution Obstacle Map ...')
-        ts = time.time()
         # generate a low-resolution obstacle map
-        self.tinyObsMap = np.ones((self.eagle_n_row, self.eagle_n_row), dtype=np.uint8)
-        self.eagleMap = np.zeros((4, self.eagle_n_row, self.eagle_n_row), dtype=np.uint8)
+        self.tinyObsMap = None
+        self.eagleMap = None
         if self.eagle_n_row > 1:
+            print('Generating Low Resolution Obstacle Map ...')
+            ts = time.time()
+            self.tinyObsMap = np.ones((self.eagle_n_row, self.eagle_n_row), dtype=np.uint8)
+            self.eagleMap = np.zeros((4, self.eagle_n_row, self.eagle_n_row), dtype=np.uint8)
             self.genObstacleMap(MetaDataFile, gen_debug_map=False, dest=self.tinyObsMap, n_row=self.eagle_n_row-1)
             self.eagleMap[0, ...] = self.tinyObsMap
-        print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
+            print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
 
         # load from cache
         if CachedFile is not None:
-            assert not DebugInfoOn, 'Please set DebugInfoOn=True when loading data from cached file!'
+            assert not DebugInfoOn, 'Please set DebugInfoOn=False when loading data from cached file!'
             print('Loading Obstacle Map and Movability Map From Cache File ...')
             ts = time.time()
             with open(CachedFile, 'rb') as f:
@@ -267,6 +302,8 @@ class House(BaseHouse):
         print('Generate Target connectivity Map (Default <{}>) ...'.format(self.default_roomTp))
         ts = time.time()
         self.targetRoomTp = None
+        if SetTarget:
+            self.setTargetRoom(self.default_roomTp, _setEagleMap=True)
         self.setTargetRoom(self.default_roomTp)  # _setEagleMap=(self.eagle_n_row>0)
         print('  --> Done! Elapsed = %.2fs' % (time.time()-ts))
 
@@ -352,9 +389,13 @@ class House(BaseHouse):
         flag_room_target = targetRoomTp in ALLOWED_TARGET_ROOM_TYPES
 
         if flag_room_target:
-            targetRooms = \
-                [(room['bbox']['min'][0], room['bbox']['min'][2], room['bbox']['max'][0], room['bbox']['max'][2])
-                 for room in self.all_rooms if any([ _equal_room_tp(tp, targetRoomTp) for tp in room['roomTypes']])]
+            if targetRoomTp == 'outdoor':
+                targetRooms = \
+                    [(room['bbox']['min'][0], room['bbox']['min'][2], room['bbox']['max'][0], room['bbox']['max'][2]) for room in self.all_rooms]
+            else:
+                targetRooms = \
+                    [(room['bbox']['min'][0], room['bbox']['min'][2], room['bbox']['max'][0], room['bbox']['max'][2])
+                     for room in self.all_rooms if any([ _equal_room_tp(tp, targetRoomTp) for tp in room['roomTypes']])]
         else:
             def _get_valid_expansion(x1,y1,x2,y2,rg):
                 cx,cy = (x1+x2) * 0.5, (y1+y2) * 0.5
@@ -382,13 +423,18 @@ class House(BaseHouse):
         # generate destination mask map
         print('[House] Caching New ConnMap for Target <{}>! (total {} rooms involved)'.format(targetRoomTp, len(targetRooms)))
         if _setEagleMap and (self.eagle_n_row > 0):  # TODO: Currently a hack to speedup mult-target learning!!! So eagleMap become *WRONG*!
-            self.eagleMap[1, ...] = 0
+            inside_val, outside_val = (1, 0) if targetRoomTp != 'outdoor' else (0, 1)
+            self.eagleMap[1, ...] = outside_val
             for room in targetRooms:
                 _x1, _y1, _x2, _y2 = room
                 x1,y1,x2,y2 = self.rescale(_x1,_y1,_x2,_y2,self.eagleMap.shape[1]-1)
-                self.eagleMap[1, x1:(x2+1), y1:(y2+1)] = 1
+                self.eagleMap[1, x1:(x2+1), y1:(y2+1)] = inside_val
         # compute shortest distance
-        if not self._genShortestDistMap(targetRooms, targetRoomTp):
+        if targetRoomTp == 'ourdoor':
+            okay_flag = self._genOutsideDistMap(targetRooms, targetRoomTp)
+        else:
+            okay_flag = self._genShortestDistMap(targetRooms, targetRoomTp)
+        if not okay_flag:
             print("Error Occured for Target {}! Target Removed from Target List!".format(targetRoomTp))
             self.all_desired_targetTypes.remove(targetRoomTp)  # invalid target remove from list
             return False
@@ -414,7 +460,7 @@ class House(BaseHouse):
     """
     def getRandomLocation(self, roomTp, return_grid=False):
         roomTp = roomTp.lower()
-        assert roomTp in ALLOWED_TARGET_ROOM_TYPES, '[House] room type <{}> not supported!'.format(roomTp)
+        assert roomTp in self.all_desired_roomTypes, '[House] room type <{}> not supported!'.format(roomTp)
         if self._getConnectCoorsSize(roomTp) == 0:
             rooms = self._getRooms(roomTp)
             room_boxes = [self._getRoomCoorBox(room) for room in rooms]
@@ -465,6 +511,12 @@ class House(BaseHouse):
         return self.to_coor(gx, gy, True)
 
     """
+    return the number of allowed grids in this house for a particular 3D world step length
+    """
+    def getAllowedGridDist(self, max_allowed_step_dist):
+        return int(np.floor(max_allowed_step_dist / self.grid_det + 1e-10))
+
+    """
     cache the shortest distance to all the possible room types
     """
     def cache_all_target(self):
@@ -487,9 +539,11 @@ class House(BaseHouse):
             if cat not in ALLOWED_OBJECT_TARGET_TYPES: continue
             _x1, _, _y1 = obj['bbox']['min']
             _x2, _, _y2 = obj['bbox']['max']
-            if cat not in self.tar_obj_region:
-                self.tar_obj_region[cat] = []
-            self.tar_obj_region[cat].append((_x1, _y1, _x2, _y2))
+            list_of_cat = _get_object_categories(cat)
+            for c in list_of_cat:
+                if c not in self.tar_obj_region:
+                    self.tar_obj_region[c] = []
+                self.tar_obj_region[c].append((_x1, _y1, _x2, _y2))
 
     # TODO: maybe move this to C++ side?
     def genObstacleMap(self, MetaDataFile, gen_debug_map=True, dest=None, n_row=None):

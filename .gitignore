@@ -51,3 +51,6 @@ glew.pc
 
 # ide caches
 .idea/
+
+# tmp storage
+sandbox/_storage/*
