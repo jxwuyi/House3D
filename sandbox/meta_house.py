@@ -24,7 +24,7 @@ __all__ = ['MetaHouse']
 ######################################
 # allowed target room types
 # NOTE: consider "toilet" and "bathroom" the same thing
-ALLOWED_TARGET_ROOM_TYPES = ['kitchen', 'dining_room', 'living_room', 'bathroom', 'bedroom', 'office']
+ALLOWED_TARGET_ROOM_TYPES = ['kitchen', 'dining_room', 'living_room', 'bathroom', 'bedroom', 'office', 'storage', 'garage']
 
 # special case: <table_and_chair>
 ALLOWED_OBJECT_TARGET_TYPES = ['kitchen_cabinet','sofa','chair','toilet','table', 'sink','wardrobe_cabinet','bed',
@@ -223,7 +223,7 @@ class MetaHouse(BaseHouse):
             self.genObstacleMap(MetaDataFile, gen_debug_map=DebugInfoOn, dest=t_obsMap, n_row=EagleViewRes)
             self.eagle_map = t_obsMap
             if StorageFile is not None:
-                with open(StorageFile, 'rb') as f:
+                with open(StorageFile, 'wb') as f:
                     pickle.dump([t_obsMap, self._debugMap], f)
             print('  --> Done! Elapsed = %.2fs' % (time.time() - ts))
         else:
@@ -271,12 +271,28 @@ class MetaHouse(BaseHouse):
         fill_region(obsMap, x1, y1, x2, y2, 0)
         if gen_debug_map and (self._debugMap is not None):
             fill_region(self._debugMap, x1, y1, x2, y2, 0)
+
+        # mark all rooms
+        if gen_debug_map and (self._debugMap is not None):
+            for room in self.all_rooms:
+                if any([any([_equal_room_tp(tp, roomTp) for roomTp in ALLOWED_TARGET_ROOM_TYPES]) for tp in room['roomTypes']]):
+                    _x1, _, _y1 = room['bbox']['min']
+                    _x2, _, _y2 = room['bbox']['max']
+                    x1, y1, x2, y2 = self.rescale(_x1, _y1, _x2, _y2, n_row)
+                    if x2 > x1: x2 -=1
+                    if y2 > y1: y2 -=1
+                    if x1 < x2: x1 += 1
+                    if y1 < y2: y1 += 1
+                    fill_region(self._debugMap, x1, y1, x2, y2, 0.3)  # map objects
+
         # fill boundary of rooms
         maskRoom = np.zeros_like(obsMap, dtype=np.int8)
         for wall in self.all_walls:
             _x1, _, _y1 = wall['bbox']['min']
             _x2, _, _y2 = wall['bbox']['max']
             x1, y1, x2, y2 = self.rescale(_x1, _y1, _x2, _y2, n_row)
+            if x2 < x1: x2 = x1
+            if y2 < y1: y2 = y1
             fill_region(obsMap, x1, y1, x2, y2, 1)
             if gen_debug_map and (self._debugMap is not None):
                 fill_region(self._debugMap, x1, y1, x2, y2, 1)
@@ -301,25 +317,28 @@ class MetaHouse(BaseHouse):
                     y2 += 1
             fill_region(obsMap, x1, y1, x2, y2, 0)
             if gen_debug_map and (self._debugMap is not None):
-                fill_region(self._debugMap, x1, y1, x2, y2, 0)
+                #fill_region(self._debugMap, x1, y1, x2, y2, 0)
+                for i in range(x1,x2+1):
+                    for j in range(y1,y2+1):
+                        if self._debugMap[i,j] > 0.96:
+                            self._debugMap[i,j]=0
 
         # mark all the objects obstacle
         for obj in colide_obj:
             _x1, _, _y1 = obj['bbox']['min']
             _x2, _, _y2 = obj['bbox']['max']
             x1, y1, x2, y2 = self.rescale(_x1, _y1, _x2, _y2, n_row)
+            if x2 > x1: x2 -= 1
+            if y2 > y1: y2 -= 1
+            if x1 < x2: x1 += 1
+            if y1 < y2: y2 += 1
             fill_region(obsMap, x1, y1, x2, y2, 1)
-            if gen_debug_map and (obj['modelId'] in self.map_model_to_cat) and (self._debugMap is not None):
-                fill_region(self._debugMap, x1, y1, x2, y2, 0.7)   # map objects
+            if gen_debug_map and (self._debugMap is not None):
+                if (obj['modelId'] in self.map_model_to_cat):
+                    fill_region(self._debugMap, x1, y1, x2, y2, 0.7)   # map target objects
+                else:
+                    fill_region(self._debugMap, x1, y1, x2, y2, 0.9)   # map other objects
 
-        # mark all rooms
-        if gen_debug_map and (self._debugMap is not None):
-            for room in self.all_rooms:
-                if any([any([_equal_room_tp(tp, roomTp) for roomTp in ALLOWED_TARGET_ROOM_TYPES]) for tp in room['roomTypes']]):
-                    _x1, _, _y1 = room['bbox']['min']
-                    _x2, _, _y2 = room['bbox']['max']
-                    x1, y1, x2, y2 = self.rescale(_x1, _y1, _x2, _y2, n_row)
-                    fill_region(self._debugMap, x1, y1, x2, y2, 0.3)  # map objects
 
     @property
     def connMap(self):

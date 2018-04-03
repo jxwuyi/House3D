@@ -18,6 +18,8 @@ modelObjectMapFile = CFG['modelObjectMap'] if 'modelObjectMap' in CFG else None
 
 tmp_storage_dir = './storage/'
 eagle_view_resolution = 39
+flag_pickle_stats = True
+
 
 flag_parallel_init = (sys.platform != 'darwin')
 flag_env_set = 'train'
@@ -83,38 +85,40 @@ ts = time.time()
 num_houses = len(all_houseIDs)
 all_houses = create_house_from_index(-num_houses, cacheAllTarget=True)
 
-room_stats = dict()
-obj_stats = dict()
-for house in all_houses:
-    for k in house.room_stats.keys():
-        if k not in room_stats:
-            room_stats[k] = 1
-        else:
-            room_stats[k] += 1
-    for k in house.obj_stats.keys():
-        if k not in obj_stats:
-            obj_stats[k] = 1
-        else:
-            obj_stats[k] += 1
+if flag_pickle_stats:
+    room_stats = dict()
+    obj_stats = dict()
+    for house in all_houses:
+        for k in house.room_stats.keys():
+            if k not in room_stats:
+                room_stats[k] = 1
+            else:
+                room_stats[k] += 1
+        for k in house.obj_stats.keys():
+            if k not in obj_stats:
+                obj_stats[k] = 1
+            else:
+                obj_stats[k] += 1
 
 
-import operator
-sorted_rooms = sorted(room_stats.items(), key=operator.itemgetter(1))
-sorted_objs = sorted(obj_stats.items(), key=operator.itemgetter(1))
 
-with open('room_stats.json','w') as f:
-    json.dump(room_stats, f)
-with open('obj_stats.json','w') as f:
-    json.dump(obj_stats, f)
+    import operator
+    sorted_rooms = sorted(room_stats.items(), key=operator.itemgetter(1))
+    sorted_objs = sorted(obj_stats.items(), key=operator.itemgetter(1))
 
-logfile = 'log_stats.txt'
-with open(logfile, 'w') as f:
-    print('++++++++++++++++++++++++++++++++++\nroom stats:', file=f)
-    for r, c in sorted_rooms:
-        print('room = %s, cnt = %d, frac = %.4f' % (r, c, c / len(all_houses)), file=f)
-    print('++++++++++++++++++++++++++++++++++\nobject stats:', file=f)
-    for r, c in sorted_objs:
-        print('object = %s, cnt = %d, frac = %.4f' % (r, c, c / len(all_houses)), file=f)
+    with open('room_stats.json','w') as f:
+        json.dump(room_stats, f)
+    with open('obj_stats.json','w') as f:
+        json.dump(obj_stats, f)
+
+    logfile = 'log_stats.txt'
+    with open(logfile, 'w') as f:
+        print('++++++++++++++++++++++++++++++++++\nroom stats:', file=f)
+        for r, c in sorted_rooms:
+            print('room = %s, cnt = %d, frac = %.4f' % (r, c, c / len(all_houses)), file=f)
+        print('++++++++++++++++++++++++++++++++++\nobject stats:', file=f)
+        for r, c in sorted_objs:
+            print('object = %s, cnt = %d, frac = %.4f' % (r, c, c / len(all_houses)), file=f)
 
 
 """
