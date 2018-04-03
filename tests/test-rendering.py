@@ -45,20 +45,20 @@ if __name__ == '__main__':
         key = cv2.waitKey(0)
         if key == 27 or key == ord('q'): #esc
             break
-        elif key == ord('w'):
+        elif key == ord('i'):
             cam.pos += cam.front * 0.5
-        elif key == ord('s'):
+        elif key == ord('k'):
             cam.pos -= cam.front * 0.5
-        elif key == ord('a') or key == 81:
+        elif key == ord('j') or key == 81:
             cam.pos -= cam.right * 0.5
-        elif key == ord('d') or key == 83:
+        elif key == ord('l') or key == 83:
             cam.pos += cam.right * 0.5
-        elif key == ord('h'):
+        elif key == ord('s'):
             cam.yaw -= 5
             # need to call updateDirection to make the change to yaw/pitch
             # take effect
             cam.updateDirection()
-        elif key == ord('l'):
+        elif key == ord('d'):
             cam.yaw += 5
             cam.updateDirection()
         elif key == 82:

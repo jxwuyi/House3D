@@ -35,9 +35,22 @@ time_penalty_reward = 0.1   # penalty for each time step
 delta_reward_coef = 0.5
 speed_reward_coef = 1.0
 
-success_distance_range = 1.5
 success_stay_time_steps = 5
 success_see_target_time_steps = 2   # time steps required for success under the "see" criteria
+
+######################################
+# reward function parameters for new
+######################################
+new_time_penalty_reward = 0.1   # penalty for each time step
+new_reward_coef = 1.0
+new_reward_bound = 0.5
+new_leave_penalty = 1
+new_stay_room_reward = 0.05
+new_success_stay_time_steps = 4
+new_success_reward = 10
+new_pixel_object_reward = 0.1
+#####################################
+
 
 # sensitivity setting
 rotation_sensitivity = 30  # 45   # maximum rotation per time step
@@ -76,6 +89,7 @@ class RoomNavTask(gym.Env):
                  seed=None,
                  reward_type='delta',
                  hardness=None,
+                 max_birthplace_steps=None,
                  move_sensitivity=None,
                  segment_input=True,
                  joint_visual_signal=False,
@@ -92,10 +106,12 @@ class RoomNavTask(gym.Env):
         Args:
             env: an instance of environment (multi-house or single-house)
             seed: if not None, set the random seed
-            reward_type (str, optional): reward shaping, currently available: none, linear, indicator, delta and speed
+            reward_type (str, optional): reward shaping, currently available: none, linear, indicator, delta and speed.
+                                         <new> means temporary reward function under development
             hardness (double, optional): if not None, must be a real number between 0 and 1, indicating the hardness
                                          namely the distance from birthplace to target (1 is the hardest)
                                          None means 1.0
+            max_birthplace_steps (int, optional): if not None, the birthplace will be no further than <this> amount of action steps from target
             move_sensitivity (double, optional): if not None, set the maximum movement per time step (generally should not be changed)
             segment_input (bool, optional): whether to use semantic segmentation mask for observation
             joint_visual_signal (bool, optional): when true, use both visual signal and segmentation mask as observation
@@ -106,10 +122,10 @@ class RoomNavTask(gym.Env):
             discrete_action (bool, optional):  when true, use discrete actions; otherwise use continuous actions
         """
         self.env = env
-        assert isinstance(env, Environment), '[RoomNavTask] env must be an instance of Environment!'
+        #assert isinstance(env, Environment), '[RoomNavTask] env must be an instance of Environment!'
         if env.resolution != (120, 90): reset_see_criteria(env.resolution)
         self.resolution = resolution = env.resolution
-        assert reward_type in [None, 'none', 'linear', 'indicator', 'delta', 'speed']
+        assert reward_type in [None, 'none', 'linear', 'indicator', 'delta', 'speed', 'new']
         self.reward_type = reward_type
         self.colorDataFile = self.env.config['colorFile']
         self.segment_input = segment_input
@@ -142,11 +158,13 @@ class RoomNavTask(gym.Env):
         # configs
         self.move_sensitivity = (move_sensitivity or default_move_sensitivity)  # at most * meters per frame
         self.rot_sensitivity = rotation_sensitivity
-        self.dist_scale = dist_reward_scale or 1
-        self.successRew = success_reward
-        self.inroomRew = stay_room_reward or 0.2
+        self.dist_scale = dist_reward_scale or 1.0
+        self.successRew = success_reward if reward_type != 'new' else new_success_reward
+        self.inroomRew = (stay_room_reward if reward_type != 'new' else new_stay_room_reward) or 0.2
         self.colideRew = collision_penalty_reward or 0.02
         self.goodMoveRew = correct_move_reward or 0.0
+        self.pixelRew = (pixel_object_reward if reward_type != 'new' else new_pixel_object_reward) or 0.0
+        self.succSeeSteps = (success_see_target_time_steps if reward_type != 'new' else new_success_stay_time_steps)
 
         self.last_obs = None
         self.last_info = None
@@ -154,9 +172,10 @@ class RoomNavTask(gym.Env):
 
         # config hardness
         self.hardness = None
-        self.availCoors = None
-        self._availCoorsDict = None
-        self.reset_hardness(hardness)
+        self.max_birthplace_steps = None
+        self.availCoorsSize = None
+        self._availCoorsSizeDict = None
+        self.reset_hardness(hardness, max_birthplace_steps)
 
         # temp storage
         self.collision_flag = False
@@ -170,10 +189,11 @@ class RoomNavTask(gym.Env):
         print('[RoomNavTask] >> Success Measure = <{}>'.format(success_measure))
         self.success_stay_cnt = 0
         if success_measure == 'see':
-            self.room_target_object = dict()
+            self.room_target_object = dict(outdoor=[])  # outdoor is a special category
             self._load_target_object_data(self.env.config['roomTargetFile'])
             if self.include_object_target:
                 self._load_target_object_data(self.env.config['objectTargetFile'])
+
 
     def _load_target_object_data(self, roomTargetFile):
         with open(roomTargetFile) as csvFile:
@@ -196,20 +216,26 @@ class RoomNavTask(gym.Env):
         elif target == 'any-room':
             desired_target_list = self.house.all_desired_roomTypes
             target = random.choice(desired_target_list)
+        elif target == 'any-object':
+            desired_target_list = self.house.all_desired_targetObj
+            target = random.choice(desired_target_list)
         #else:
         #    assert target in desired_target_list, '[RoomNavTask] desired target <{}> does not exist in the current house!'.format(target)
         if self.house.setTargetRoom(target):  # target room changed!!!
             _id = self.house._id
-            if self.house.targetRoomTp not in self._availCoorsDict[_id]:
-                if self.hardness is None:
-                    self.availCoors = self.house.connectedCoors
+            if self.house.targetRoomTp not in self._availCoorsSizeDict[_id]:
+                if (self.hardness is None) and (self.max_birthplace_steps is None):
+                    self.availCoorsSize = self.house.getConnectedLocationSize()
                 else:
-                    allowed_dist = self.house.maxConnDist * self.hardness
-                    self.availCoors = [c for c in self.house.connectedCoors
-                                       if self.house.connMap[c[0], c[1]] <= allowed_dist]
-                self._availCoorsDict[_id][self.house.targetRoomTp] = self.availCoors
+                    allowed_dist = self.house.maxConnDist
+                    if self.hardness is not None:
+                        allowed_dist = min(int(self.house.maxConnDist * self.hardness + 1e-10), allowed_dist)
+                    if self.max_birthplace_steps is not None:
+                        allowed_dist = min(self.house.getAllowedGridDist(self.max_birthplace_steps * self.move_sensitivity), allowed_dist)
+                    self.availCoorsSize = self.house.getConnectedLocationSize(max_allowed_dist=allowed_dist)
+                self._availCoorsSizeDict[_id][self.house.targetRoomTp] = self.availCoorsSize
             else:
-                self.availCoors = self._availCoorsDict[_id][self.house.targetRoomTp]
+                self.availCoorsSize = self._availCoorsSizeDict[_id][self.house.targetRoomTp]
 
     @property
     def house(self):
@@ -231,12 +257,12 @@ class RoomNavTask(gym.Env):
 
         # reset target room
         self.reset_target(target=target)  # randomly reset
+        self.collision_flag = False
 
         # general birth place
-        gx, gy = random.choice(self.availCoors)
-        self.collision_flag = False
+        x, y = self.house.getIndexedConnectedLocation(np.random.randint(self.availCoorsSize))
+
         # generate state
-        x, y = self.house.to_coor(gx, gy, True)
         self.env.reset(x=x, y=y)
         self.last_obs = self.env.render()
         if self.joint_visual_signal:
@@ -266,8 +292,8 @@ class RoomNavTask(gym.Env):
             self.success_stay_cnt += 1
             return self.success_stay_cnt >= success_stay_time_steps
         # self.success_measure == 'see'
-        flag_see_target_objects = False
         object_color_list = self.room_target_object[self.house.targetRoomTp]
+        flag_see_target_objects = (len(object_color_list) > 0)
         if (self.last_obs is not None) and self.segment_input:
             seg_obs = self.last_obs if not self.joint_visual_signal else self.last_obs[:,:,3:6]
         else:
@@ -283,7 +309,7 @@ class RoomNavTask(gym.Env):
             self.success_stay_cnt += 1
         else:
             self.success_stay_cnt = 0  # did not see any target objects!
-        return self.success_stay_cnt >= success_see_target_time_steps
+        return self.success_stay_cnt >= self.succSeeSteps
 
     """
     gym api: step function
@@ -349,11 +375,20 @@ class RoomNavTask(gym.Env):
             det_dist = np.clip(det_dist, -indicator_reward, indicator_reward)
             reward += det_dist
             if raw_dist >= orig_raw_dist: reward -= time_penalty_reward
+        elif self.reward_type == 'new':
+            # utilize delta reward but with different parameters
+            delta_raw_dist = orig_raw_dist - raw_dist
+            ratio = self.move_sensitivity / self.house.grid_det
+            new_reward = delta_raw_dist / ratio * new_reward_coef
+            new_reward = np.clip(new_reward, -new_reward_bound, new_reward_bound)
+            reward += new_reward
+            reward -= time_penalty_reward   # always deduct time penalty
+            if (orig_raw_dist == 0) and (raw_dist > 0): reward -= new_leave_penalty  # big penalty when leave target room
 
         # object seen reward
         if (raw_dist == 0) and (self.success_measure == 'see'):  # inside target room and success measure is <see>
             if not done:
-                object_reward = np.clip((self._object_cnt - n_pixel_for_object_sense) / L_pixel_reward_range, 0., 1.) * pixel_object_reward
+                object_reward = np.clip((self._object_cnt - n_pixel_for_object_sense) / L_pixel_reward_range, 0., 1.) * self.pixelRew
                 reward += object_reward
 
         if self.depth_signal:
@@ -387,6 +422,20 @@ class RoomNavTask(gym.Env):
         return self.house.targetRoomTp
 
     """
+    [Sandbox/Graph] return auxiliary mask
+    """
+    def get_aux_tags(self):
+        cx, cy = self.env.info['loc']
+        return self.house.get_target_mask(cx, cy)
+
+    """
+    [Sandbox/Graph] return optimal plan info
+    """
+    def get_optimal_plan(self):
+        cx, cy = self.env.info['loc']
+        return self.house.get_optimal_plan(cx, cy, self.house.targetRoomTp)
+
+    """
     return all the available target room types of the current house
     """
     def get_avail_targets(self):
@@ -395,17 +444,21 @@ class RoomNavTask(gym.Env):
     """
     reset the hardness of the task
     """
-    def reset_hardness(self, hardness=None):
+    def reset_hardness(self, hardness=None, max_birthplace_steps=None):
         self.hardness = hardness
-        if hardness is None:
-            self.availCoors = self.house.connectedCoors
+        self.max_birthplace_steps = max_birthplace_steps
+        if (hardness is None) and (max_birthplace_steps is None):
+            self.availCoorsSize = self.house.getConnectedLocationSize()
         else:
-            allowed_dist = self.house.maxConnDist * hardness
-            self.availCoors = [c for c in self.house.connectedCoors
-                               if self.house.connMap[c[0], c[1]] <= allowed_dist]
+            allowed_dist = self.house.maxConnDist
+            if hardness is not None:
+                allowed_dist = min(int(self.house.maxConnDist * hardness + 1e-10), allowed_dist)
+            if max_birthplace_steps is not None:
+                allowed_dist = min(self.house.getAllowedGridDist(max_birthplace_steps * self.move_sensitivity), allowed_dist)
+            self.availCoorsSize = self.house.getConnectedLocationSize(max_allowed_dist=allowed_dist)
         n_house = self.env.num_house
-        self._availCoorsDict = [dict() for i in range(n_house)]
-        self._availCoorsDict[self.house._id][self.house.targetRoomTp] = self.availCoors
+        self._availCoorsSizeDict = [dict() for _ in range(n_house)]
+        self._availCoorsSizeDict[self.house._id][self.house.targetRoomTp] = self.availCoorsSize
 
     """
     recover the state (location) of the agent from the info dictionary
@@ -433,83 +486,3 @@ class RoomNavTask(gym.Env):
 
     def debug_show(self):
         return self.env.debug_render()
-
-if __name__ == '__main__':
-    from .common import load_config
-    from . import objrender
-    from .objrender import RenderMode
-    api = objrender.RenderAPI(
-            w=400, h=300, device=0)
-    cfg = load_config('config.json')
-
-    houses = ['00065ecbdd7300d35ef4328ffe871505',
-    'cf57359cd8603c3d9149445fb4040d90', '31966fdc9f9c87862989fae8ae906295', 'ff32675f2527275171555259b4a1b3c3',
-    '7995c2a93311717a3a9c48d789563590', '8b8c1994f3286bfc444a7527ffacde86', '775941abe94306edc1b5820e3a992d75',
-    '32e53679b33adfcc5a5660b8c758cc96', '4383029c98c14177640267bd34ad2f3c', '0884337c703e7c25949d3a237101f060',
-    '492c5839f8a534a673c92912aedc7b63', 'a7e248efcdb6040c92ac0cdc3b2351a6', '2364b7dcc432c6d6dcc59dba617b5f4b',
-    'e3ae3f7b32cf99b29d3c8681ec3be321', 'f10ce4008da194626f38f937fb9c1a03', 'e6f24af5f87558d31db17b86fe269cf2',
-    '1dba3a1039c6ec1a3c141a1cb0ad0757', 'b814705bc93d428507a516b866efda28', '26e33980e4b4345587d6278460746ec4',
-    '5f3f959c7b3e6f091898caa8e828f110', 'b5bd72478fce2a2dbd1beb1baca48abd', '9be4c7bee6c0ba81936ab0e757ab3d61']
-    #env = MultiHouseEnv(api, houses[:3], cfg)  # use 3 houses
-    env = Environment(api, houses[0], cfg)
-    task = RoomNavTask(env, hardness=0.6, discrete_action=True)
-
-    action_dict = dict(k=7,l=9,j=10,o=3,u=4,f=5,a=6,i=8,d=11,s=12,r=-1,h=-2,q=-3)
-    def print_help():
-        print('Usage: ')
-        print('> Actions: (Simplified Version) Total 10 Actions')
-        print('  --> j, k, l, i, u, o: left, back, right, forward, left-forward, right-forward')
-        print('  --> a, s, d, f: left-rotate, small left-rot, small right-rot, right-rotate')
-        print('> press r: reset')
-        print('> press h: show helper again')
-        print('> press q: exit')
-
-    print_help()
-    eval = []
-    while True:
-        step = 0
-        rew = 0
-        good = 0
-        task.reset()
-        target = task.info['target_room']
-        while True:
-            print('Step#%d, Instruction = <go to %s>' % (step, target))
-            mat = task.debug_show()
-            cv2.imshow("aaa", mat)
-            while True:
-                key = cv2.waitKey(0)
-                key = chr(key)
-                if key in action_dict:
-                    if key == 'h':
-                        print_help()
-                    else:
-                        break
-                else:
-                    print('>> invalid key! press q to quit; r to reset; h to get helper')
-            if action_dict[key] < 0:
-                break
-            step += 1
-            obs, reward, done, info = task.step(action_dict[key])
-            rew += reward
-            print('>> r = %.2f, done = %f, accu_rew = %.2f, step = %d' % (reward, done, rew, step))
-            print('   info: collision = %d, raw_dist = %d, scaled_dist = %.3f' % (info['collision'], info['dist'], info['scaled_dist']))
-            if done:
-                good = 1
-                print('Congratulations! You reach the Target!')
-                print('>> Press any key to restart!')
-                key = cv2.waitKey(0)
-                break
-        eval.append((step, rew, good))
-        if key == 'q':
-            break
-    if len(eval) > 0:
-        print('++++++++++ Task Stats +++++++++++')
-        print("Episode Played: %d" % len(eval))
-        succ = [e for e in eval if e[2] > 0]
-        print("Success = %d, Rate = %.3f" % (len(succ), len(succ) / len(eval)))
-        print("Avg Reward = %.3f" % (sum([e[1] for e in eval])/len(eval)))
-        if len(succ) > 0:
-            print("Avg Success Reward = %.3f" % (sum([e[1] for e in succ]) / len(succ)))
-        print("Avg Step = %.3f" % (sum([e[0] for e in eval]) / len(eval)))
-        if len(succ) > 0:
-            print("Avg Success Step = %.3f" % (sum([e[0] for e in succ]) / len(succ)))
