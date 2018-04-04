@@ -17,20 +17,9 @@ objectTargetFile = CFG['objectTargetFile'] if 'objectTargetFile' in CFG else Non
 modelObjectMapFile = CFG['modelObjectMap'] if 'modelObjectMap' in CFG else None
 
 flag_parallel_init = False
-flag_env_set = 'test' #'small'   # 'train'
+flag_env_set = 'train' #'small'   # 'train'
 
-flag_object_success_range = 1.0
-
-"""
-all_houseIDs = ['00065ecbdd7300d35ef4328ffe871505',
-    'cf57359cd8603c3d9149445fb4040d90', '31966fdc9f9c87862989fae8ae906295', 'ff32675f2527275171555259b4a1b3c3',
-    '7995c2a93311717a3a9c48d789563590', '8b8c1994f3286bfc444a7527ffacde86', '775941abe94306edc1b5820e3a992d75',
-    '32e53679b33adfcc5a5660b8c758cc96', '4383029c98c14177640267bd34ad2f3c', '0884337c703e7c25949d3a237101f060',
-    '492c5839f8a534a673c92912aedc7b63', 'a7e248efcdb6040c92ac0cdc3b2351a6', '2364b7dcc432c6d6dcc59dba617b5f4b',
-    'e3ae3f7b32cf99b29d3c8681ec3be321', 'f10ce4008da194626f38f937fb9c1a03', 'e6f24af5f87558d31db17b86fe269cf2',
-    '1dba3a1039c6ec1a3c141a1cb0ad0757', 'b814705bc93d428507a516b866efda28', '26e33980e4b4345587d6278460746ec4',
-    '5f3f959c7b3e6f091898caa8e828f110', 'b5bd72478fce2a2dbd1beb1baca48abd', '9be4c7bee6c0ba81936ab0e757ab3d61']
-"""
+flag_object_success_range = 0.5
 
 house_ids_dict = json.load(open('all_house_ids.json','r'))
 all_houseIDs = house_ids_dict[flag_env_set]
@@ -94,7 +83,7 @@ def create_house_from_index(k, genRoomTypeMap=False, cacheAllTarget=False):
 if __name__ == '__main__':
     print('Start Generating House ....')
     ts = time.time()
-    num_houses = 15
+    num_houses = len(all_houseIDs)#50
     #all_houses = create_house_from_index(-num_houses, cacheAllTarget=True)
     #all_houses = all_houseIDs[:num_houses]
     all_houses = create_house_from_index(-num_houses, cacheAllTarget=True)
@@ -114,24 +103,34 @@ if __name__ == '__main__':
         print('  --> a, s, d, f: left-rotate, small left-rot, small right-rot, right-rotate')
         print('> press r: reset')
         print('> press h: show helper again')
+        print('> press m: show <HouseID>')
         print('> press q: exit')
 
     import cv2
     print_help()
     eval = []
+    itr = 0
     while True:
         step = 0
         rew = 0
         good = 0
-        task.reset(target='any-object')
+        task.reset(target='any-object', house_id = itr)
+        itr += 1
         target = task.info['target_room']
         while True:
             print('Step#%d, Instruction = <go to %s>' % (step, target))
+            if step == 0:
+                _i = env.house._id
+                print('>>> HouseID = {}, set = {}, index = {}'.format(all_houseIDs[_i], flag_env_set, _i))
             mat = task.debug_show()
             cv2.imshow("aaa", mat)
             while True:
                 key = cv2.waitKey(0)
                 key = chr(key)
+                if key == 'm':
+                    _i = env.house._id
+                    print('>>> HouseID = {}, set = {}, index = {}'.format(all_houseIDs[_i], flag_env_set, _i))
+                    continue
                 if key in action_dict:
                     if key == 'h':
                         print_help()

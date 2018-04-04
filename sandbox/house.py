@@ -219,7 +219,7 @@ class House(BaseHouse):
 
         # parse objects and room/object types
         self.all_obj = [node for node in level['nodes'] if node['type'].lower() == 'object']
-        self.all_rooms = [node for node in level['nodes'] if (node['type'].lower() == 'room') and ('roomTypes' in node)]
+        self.all_rooms = [node for node in level['nodes'] if (node['type'].lower() == 'room') and ('roomTypes' in node) and ('bbox' in node)]
         self.all_roomTypes = [room['roomTypes'] for room in self.all_rooms]
         self.all_desired_roomTypes = []
         self.default_roomTp = None
@@ -391,7 +391,8 @@ class House(BaseHouse):
         if flag_room_target:
             if targetRoomTp == 'outdoor':
                 targetRooms = \
-                    [(room['bbox']['min'][0], room['bbox']['min'][2], room['bbox']['max'][0], room['bbox']['max'][2]) for room in self.all_rooms]
+                    [(room['bbox']['min'][0], room['bbox']['min'][2], room['bbox']['max'][0], room['bbox']['max'][2])
+                    for room in self.all_rooms if 'bbox' in room]
             else:
                 targetRooms = \
                     [(room['bbox']['min'][0], room['bbox']['min'][2], room['bbox']['max'][0], room['bbox']['max'][2])

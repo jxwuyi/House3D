@@ -19,7 +19,7 @@ modelObjectMapFile = CFG['modelObjectMap'] if 'modelObjectMap' in CFG else None
 
 flag_parallel_init = (sys.platform != 'darwin')
 
-flag_object_success_range = 1.0
+flag_object_success_range = 0.5
 
 all_houseIDs = ['00065ecbdd7300d35ef4328ffe871505',
     'cf57359cd8603c3d9149445fb4040d90', '31966fdc9f9c87862989fae8ae906295', 'ff32675f2527275171555259b4a1b3c3',

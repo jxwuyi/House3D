@@ -245,14 +245,14 @@ class RoomNavTask(gym.Env):
     gym api: reset function
     when target is not None, we will set the target room type to navigate to
     """
-    def reset(self, target=None):
+    def reset(self, target=None, house_id=None):
         # clear episode steps
         self.current_episode_step = 0
         self.success_stay_cnt = 0
         self._object_cnt = 0
 
         # reset house
-        self.env.reset_house()
+        self.env.reset_house(house_id)
         self.house.targetRoomTp = None  # [NOTE] IMPORTANT! clear this!!!!!
 
         # reset target room

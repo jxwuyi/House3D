@@ -147,10 +147,11 @@ class House(_BaseHouse):
                  RobotRadius=0.1,
                  RobotHeight=0.75,  # 1.0,
                  CarpetHeight=0.15,
-                 ObjectTargetSuccRange=1.0,
+                 ObjectTargetSuccRange=0.5,
                  SetTarget=True,
                  BuildTargetGraph=False,
                  IncludeOutdoorTarget=False,
+                 GenRoomTypeMap=False,   # deprecated!!! only for back-compatibility
                  _IgnoreSmallHouse=False  # should be only set true when called by "cache_houses.py"
                  ):
         """Initialization and Robot Parameters
@@ -181,6 +182,9 @@ class House(_BaseHouse):
 
         ts = time.time()
         print('Data Loading ...')
+
+        # Back-compatibility
+        BuildTargetGraph = BuildTargetGraph or GenRoomTypeMap
 
         self.metaDataFile = MetaDataFile
         self.objFile = ObjFile
@@ -217,7 +221,7 @@ class House(_BaseHouse):
 
         # parse objects and room/object types
         self.all_obj = [node for node in level['nodes'] if node['type'].lower() == 'object']
-        self.all_rooms = [node for node in level['nodes'] if (node['type'].lower() == 'room') and ('roomTypes' in node)]
+        self.all_rooms = [node for node in level['nodes'] if (node['type'].lower() == 'room') and ('roomTypes' in node) and ('bbox' in node)]
         self.all_roomTypes = [room['roomTypes'] for room in self.all_rooms]
         self.all_desired_roomTypes = []
         self.default_roomTp = None
