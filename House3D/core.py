@@ -327,7 +327,7 @@ class Environment():
 
 
 class MultiHouseEnv(Environment):
-    def __init__(self, api, houses, config, seed=None, parallel_init=True):
+    def __init__(self, api, houses, config, seed=None, parallel_init=False):
         """
         Args:
             houses: a list of house id or `House` instance.
