@@ -15,7 +15,7 @@ roomTargetFile = CFG['roomTargetFile']
 objectTargetFile = CFG['objectTargetFile'] if 'objectTargetFile' in CFG else None
 modelObjectMapFile = CFG['modelObjectMap'] if 'modelObjectMap' in CFG else None
 
-flag_parallel_init = (sys.platform != 'darwin')
+flag_parallel_init = (sys.version_info[1] == 5)#("Ubuntu" in platform.platform())
 
 flag_object_success_range = 0.5
 
@@ -39,10 +39,12 @@ if __name__ == '__main__':
         all_houseIDs = house_ids_dict[flag_env_set]
         k = len(all_houseIDs)
         print('Caching Total <{}> Houses in <{}> Set...'.format(k, flag_env_set))
-        _args = [(all_houseIDs[j], CFG) for j in range(k)]
-        max_pool_size = min(40, k)
-        with Pool(k) as pool:
-            ret_worlds = pool.starmap(cache_house, _args)  # parallel version for initialization
-        #assert sum(ret_worlds) == k
-    dur = time.time() - ts
+        if not flag_parallel_init:
+            ret_worlds = [cache_house(all_houseIDs[j], CFG) for j in range(k)]
+        else:
+            _args = [(all_houseIDs[j], CFG) for j in range(k)]
+            max_pool_size = min(40, k)
+            with Pool(k) as pool:
+                ret_worlds = pool.starmap(cache_house, _args)  # parallel version for initialization
+        dur = time.time() - ts
     print('>> Done! Elapsed Time = %.3fs' % (dur))
