@@ -44,9 +44,9 @@ success_see_target_time_steps = 2   # time steps required for success under the 
 new_time_penalty_reward = 0.1   # penalty for each time step
 new_reward_coef = 1.0
 new_reward_bound = 0.5
-new_leave_penalty = 1
+new_leave_penalty = 0.5
 new_stay_room_reward = 0.05
-new_success_stay_time_steps = 4
+new_success_stay_time_steps = 3
 new_success_reward = 10
 new_pixel_object_reward = 0.1
 #####################################
@@ -382,7 +382,7 @@ class RoomNavTask(gym.Env):
             new_reward = delta_raw_dist / ratio * new_reward_coef
             new_reward = np.clip(new_reward, -new_reward_bound, new_reward_bound)
             reward += new_reward
-            reward -= time_penalty_reward   # always deduct time penalty
+            if raw_dist >= orig_raw_dist: reward -= time_penalty_reward   # always deduct time penalty
             if (orig_raw_dist == 0) and (raw_dist > 0): reward -= new_leave_penalty  # big penalty when leave target room
 
         # object seen reward
