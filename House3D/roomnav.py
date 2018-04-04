@@ -57,12 +57,12 @@ rotation_sensitivity = 30  # 45   # maximum rotation per time step
 default_move_sensitivity = 0.5  # 1.0   # maximum movement per time step
 
 # discrete action space actions, totally <13> actions
-# Fwd, L, R, LF, RF, Lrot, Rrot, Bck, s-Fwd, s-L, s-R, s-Lrot, s-Rrot
+# Fwd, L, R, LF, RF, Lrot, Rrot, Bck, s-Fwd, s-L, s-R, s-Lrot, s-Rrot, Stay
 discrete_actions=[(1.,0.,0.), (0.,1.,0.), (0.,-1.,0.), (0.5,0.5,0.), (0.5,-0.5,0.),
                   (0.,0.,1.), (0.,0.,-1.),
                   (-0.4,0.,0.),
                   (0.4,0.,0.), (0.,0.4,0.), (0.,-0.4,0.),
-                  (0.,0.,0.4), (0.,0.,-0.4)]
+                  (0.,0.,0.4), (0.,0.,-0.4), (0., 0., 0.)]
 n_discrete_actions = len(discrete_actions)
 
 # criteria for seeing the object
@@ -293,7 +293,7 @@ class RoomNavTask(gym.Env):
             return self.success_stay_cnt >= success_stay_time_steps
         # self.success_measure == 'see'
         object_color_list = self.room_target_object[self.house.targetRoomTp]
-        flag_see_target_objects = (len(object_color_list) > 0)
+        flag_see_target_objects = (len(object_color_list) == 0)
         if (self.last_obs is not None) and self.segment_input:
             seg_obs = self.last_obs if not self.joint_visual_signal else self.last_obs[:,:,3:6]
         else:

@@ -147,7 +147,7 @@ class House(_BaseHouse):
                  RobotRadius=0.1,
                  RobotHeight=0.75,  # 1.0,
                  CarpetHeight=0.15,
-                 ObjectTargetSuccRange=0.5,
+                 ObjectTargetSuccRange=0.7,
                  SetTarget=True,
                  BuildTargetGraph=False,
                  IncludeOutdoorTarget=False,
