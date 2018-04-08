@@ -98,6 +98,7 @@ PYBIND11_MODULE(objrender, m) {
     .def("_genOutsideDistMap", &BaseHouse::_genOutsideDistMap)
     .def("_genValidCoors", &BaseHouse::_genValidCoors)
     .def("_genExpandedRegionMask", &BaseHouse::_genExpandedRegionMask)
+    .def("_genExpandedRegionMaskFromTargetMap", &BaseHouse::_genExpandedRegionMaskFromTargetMap)
     // Target Dist Map Setter Functions
     .def("_clearCurrentDistMap", &BaseHouse::_clearCurrentDistMap)
     .def("_setCurrentDistMap", &BaseHouse::_setCurrentDistMap)
@@ -129,6 +130,7 @@ PYBIND11_MODULE(objrender, m) {
     .def("_gen_target_graph", &BaseHouse::_gen_target_graph)
     .def("_compute_target_plan", &BaseHouse::_compute_target_plan)
     .def("_get_target_plan_dist", &BaseHouse::_get_target_plan_dist)
+    .def("_get_target_mask_grid", &BaseHouse::_get_target_mask_grid)
     .def("_get_target_mask", &BaseHouse::_get_target_mask)
     .def("_get_target_mask_names", &BaseHouse::_get_target_mask_names)
     // Collision Checker

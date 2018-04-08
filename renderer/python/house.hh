@@ -64,6 +64,7 @@ class BaseHouse {
     int _gen_target_graph(int _n_obj);  // return the total number of targets
     vector<string> _compute_target_plan(double cx, double cy, const string& target);
     vector<double> _get_target_plan_dist(double cx, double cy, const vector<string>& plan);
+    int _get_target_mask_grid(int gx, int gy, bool only_object=false);
     int _get_target_mask(double cx, double cy, bool only_object=false);
     vector<string> _get_target_mask_names(double cx, double cy, bool only_object=false);
 
@@ -117,6 +118,10 @@ public:
     bool _genValidCoors(int x1, int y1, int x2, int y2, const string& reg_tag);
     // compute target mask and connected mask for coors in a region
     bool _genExpandedRegionMask(const string& reg_tag);
+    // compute target mask and connected mask for coors from a target region <tag>
+    //  ---> NOTE: this only remains the largest component from <tag> region [TODO: decompose into several components?]
+    //             this will also cache valid coors in <regValidCoorsLis> and <regionInd>
+    bool _genExpandedRegionMaskFromTargetMap(const string& tag);
 
     /////////////////////////////////////////
     // Target Dist Map Setter Functions

@@ -222,14 +222,16 @@ class House(_BaseHouse):
         # parse objects and room/object types
         self.all_obj = [node for node in level['nodes'] if node['type'].lower() == 'object']
         self.all_rooms = [node for node in level['nodes'] if (node['type'].lower() == 'room') and ('roomTypes' in node) and ('bbox' in node)]
-        self.all_roomTypes = [room['roomTypes'] for room in self.all_rooms]
         self.all_desired_roomTypes = []
         self.default_roomTp = None
         for roomTp in ALLOWED_TARGET_ROOM_TYPES:
-            if any([any([_equal_room_tp(tp, roomTp) for tp in tps]) for tps in self.all_roomTypes]):
+            if any([any([_equal_room_tp(tp, roomTp) for tp in room['roomTypes']]) for room in self.all_rooms]):
                 self.all_desired_roomTypes.append(roomTp)
                 if self.default_roomTp is None: self.default_roomTp = roomTp
         assert self.default_roomTp is not None, 'Cannot Find Any Desired Rooms!'
+        # store all desired rooms
+        self.all_valid_rooms = [room for room in self.all_rooms if any([any([_equal_room_tp(tp, roomTp) for tp in room['roomTypes']]) for roomTp in self.all_desired_roomTypes])]
+
         # check whether need to include <outdoor>
         if self.includeOutdoorTarget: self.all_desired_roomTypes.append('outdoor')
         print('>> Default Target Room Type Selected = {}'.format(self.default_roomTp))
@@ -452,7 +454,7 @@ class House(_BaseHouse):
         if return_grid: return gx, gy
         return self.to_coor(gx, gy, True)
 
-    def getRegionMaskForRoom(self, room_node, return_grid=False):
+    def getRegionMaskForRoom(self, room_node):
         reg_tag = room_node['id']
         x1, y1, x2, y2 = self._getRoomBounds(room_node)
         self._genValidCoors(x1, y1, x2, y2, reg_tag)

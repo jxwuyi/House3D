@@ -363,14 +363,19 @@ vector<double> BaseHouse::_get_target_plan_dist(double cx, double cy, const vect
   return dist;
 }
 
-// get the target mask for coor(cx, cy)
+// get the target mask for grid(gx, gy)
 //    when only_object == True, only return object_target bits
-int BaseHouse::_get_target_mask(double cx, double cy, bool only_object) {
-  int gx, gy;
-  tie(gx, gy) = _to_grid(cx, cy, n);
+int BaseHouse::_get_target_mask_grid(int gx, int gy, bool only_object) {
   int mask = *targetMask.data(gx, gy);
   if (only_object) mask &= (1 << n_room) - 1;
   return mask;
+}
+
+// get the target mask for coor(cx, cy)
+int BaseHouse::_get_target_mask(double cx, double cy, bool only_object) {
+  int gx, gy;
+  tie(gx, gy) = _to_grid(cx, cy, n);
+  return _get_target_mask_grid(gx, gy);
 }
 
 // return the target names associated with coor (cx, cy)
@@ -501,6 +506,59 @@ bool BaseHouse::_genExpandedRegionMask(const string& reg_tag) {
   }
   regExpandMaskLis[k] = make_tuple(in_msk, out_msk);
   return true;
+}
+
+// generate expanded mask for a target region <tag>
+bool BaseHouse::_genExpandedRegionMaskFromTargetMap(const string& tag) {
+    auto iter = targetInd.find(tag);
+    if (iter == targetInd.end()) return false;
+    if (regionInd.count(tag) > 0) return false;
+    auto& valid_coors = connCoorsLis[k];
+    int sz = n + 1;
+    int* idxMap = _get_mem<int>(sz*sz+1, -1);
+    for(auto& coor: valid_coors) {
+        int x,y; tie(x,y) = coor;
+        idxMap[INDEX(x,y,sz)] = 0;
+    }
+    vector<vector<tuple<int,int> >> comps;
+    vector<tuple<int,int> > cp_msk;
+    int best_cp_id = -1;
+    for(auto& coor: valid_coors) {
+        int x,y; tie(x,y) = coor;
+        if (idxMap[INDEX(x,y,sz)] == 0) { // find connected components
+            idxMap[INDEX(x,y,sz)] = 1;
+            vector<tuple<int,int> > que;
+            int in_mask = 0, out_mask = 0;
+            que.push_back(make_tuple(x,y));
+            for(int ptr = 0; ptr < que.size(); ++ ptr) {
+                tie(x,y) = que[ptr];
+                in_mask |= *targetMask.data(x,y);
+                for (int d=0;d<4;++d) {
+                    int tx = x + DIRS[d][0], ty = y + DIRS[d][1];
+                    if (_canMove(tx, ty)) {
+                        if (idxMap[INDEX(tx,ty,sz)] == 0) {
+                            que.push_back(make_tuple(tx,ty));
+                            idxMap[INDEX(tx,ty,sz)] = 1;
+                        } else {
+                            out_mask |= *targetMask.data(tx,ty);
+                        }
+                    }
+                }
+            }
+            cp_msk.push_back(make_tuple(in_mask, out_mask));
+            if (best_cp_id < 0 || que.size() > comps[best_cp_id].size())
+                best_cp_id = comps.size();
+            comps.push_back(que);
+        }
+    }
+    int k = regValidCoorsLis.size();
+    regionNames.push_back(tag);
+    regInputBoxLis.push_back(make_tuple(-1,-1,-1,-1));
+    regionInd[tag] = k;
+    regValidCoorsLis.push_back(comps[best_cp_id]);
+    regExpandMaskLis.push_back(cp_msk[best_cp_id]);
+    delete idxMap;
+    return true;
 }
 
 // generate movable map
