@@ -97,7 +97,8 @@ class RoomNavTask(gym.Env):
                  max_steps=-1,
                  success_measure='see',
                  discrete_action=False,
-                 include_object_target=False):
+                 include_object_target=False,
+                 reward_silence=0):
         """RoomNav task wrapper with gym api
         Note:
             all the settings are the default setting to run a task
@@ -120,6 +121,8 @@ class RoomNavTask(gym.Env):
             max_steps (int, optional): when max_steps > 0, the task will be cut after <max_steps> steps
             success_measure (str, optional): criteria for success, currently support 'see' and 'stay'
             discrete_action (bool, optional):  when true, use discrete actions; otherwise use continuous actions
+            include_object_target (bool, optional): when true, target can be an object category
+            reward_silence (int, optional): when set, the first <reward_silence> steps in each episode will not have reward other than collision penalty
         """
         self.env = env
         #assert isinstance(env, Environment), '[RoomNavTask] env must be an instance of Environment!'
@@ -127,6 +130,7 @@ class RoomNavTask(gym.Env):
         self.resolution = resolution = env.resolution
         assert reward_type in [None, 'none', 'linear', 'indicator', 'delta', 'speed', 'new']
         self.reward_type = reward_type
+        self.reward_silence = reward_silence
         self.colorDataFile = self.env.config['colorFile']
         self.segment_input = segment_input
         self.joint_visual_signal = joint_visual_signal
@@ -339,10 +343,6 @@ class RoomNavTask(gym.Env):
         cur_info = self.info
         raw_dist = cur_info['dist']
         orig_raw_dist = self.last_info['dist']
-        if raw_dist < orig_raw_dist:
-            reward += self.goodMoveRew
-        if raw_dist == 0:
-            reward += self.inroomRew
         raw_scaled_dist = cur_info['scaled_dist']
         dist = raw_scaled_dist * self.dist_scale
         done = False
@@ -353,43 +353,52 @@ class RoomNavTask(gym.Env):
         self.current_episode_step += 1
         if (self.max_steps > 0) and (self.current_episode_step >= self.max_steps): done = True
 
-        # reward shaping
-        if self.reward_type == 'linear':
-            reward -= dist
-        elif self.reward_type == 'indicator':
-            if raw_dist != orig_raw_dist:  # indicator reward
-                reward += indicator_reward if raw_dist < orig_raw_dist else -indicator_reward
-            if raw_dist >= orig_raw_dist: reward -= time_penalty_reward
-        elif self.reward_type == 'delta':
-            delta_raw_dist = orig_raw_dist - raw_dist
-            ratio = self.move_sensitivity / self.house.grid_det
-            delta_reward = delta_raw_dist / ratio * delta_reward_coef
-            delta_reward = np.clip(delta_reward, -indicator_reward, indicator_reward)
-            reward += delta_reward
-            if raw_dist >= orig_raw_dist: reward -= time_penalty_reward
-        elif self.reward_type == 'speed':
-            movement = np.sqrt((self.last_info['pos'][0]-cur_info['pos'][0])**2
-                               + (self.last_info['pos'][1]-cur_info['pos'][1])**2)
-            sign = np.sign(orig_raw_dist - raw_dist)
-            det_dist = movement * sign * speed_reward_coef
-            det_dist = np.clip(det_dist, -indicator_reward, indicator_reward)
-            reward += det_dist
-            if raw_dist >= orig_raw_dist: reward -= time_penalty_reward
-        elif self.reward_type == 'new':
-            # utilize delta reward but with different parameters
-            delta_raw_dist = orig_raw_dist - raw_dist
-            ratio = self.move_sensitivity / self.house.grid_det
-            new_reward = delta_raw_dist / ratio * new_reward_coef
-            new_reward = np.clip(new_reward, -new_reward_bound, new_reward_bound)
-            reward += new_reward
-            if raw_dist >= orig_raw_dist: reward -= time_penalty_reward   # always deduct time penalty
-            if (orig_raw_dist == 0) and (raw_dist > 0): reward -= new_leave_penalty  # big penalty when leave target room
+        # reward shaping: distance related reward
+        if self.current_episode_step > self.reward_silence:
+            if raw_dist < orig_raw_dist:
+                reward += self.goodMoveRew
+            if raw_dist == 0:
+                reward += self.inroomRew
+
+        # reward shaping: general
+        if self.current_episode_step > self.reward_silence:
+            if self.reward_type == 'linear':
+                reward -= dist
+            elif self.reward_type == 'indicator':
+                if raw_dist != orig_raw_dist:  # indicator reward
+                    reward += indicator_reward if raw_dist < orig_raw_dist else -indicator_reward
+                if raw_dist >= orig_raw_dist: reward -= time_penalty_reward
+            elif self.reward_type == 'delta':
+                delta_raw_dist = orig_raw_dist - raw_dist
+                ratio = self.move_sensitivity / self.house.grid_det
+                delta_reward = delta_raw_dist / ratio * delta_reward_coef
+                delta_reward = np.clip(delta_reward, -indicator_reward, indicator_reward)
+                reward += delta_reward
+                if raw_dist >= orig_raw_dist: reward -= time_penalty_reward
+            elif self.reward_type == 'speed':
+                movement = np.sqrt((self.last_info['pos'][0]-cur_info['pos'][0])**2
+                                   + (self.last_info['pos'][1]-cur_info['pos'][1])**2)
+                sign = np.sign(orig_raw_dist - raw_dist)
+                det_dist = movement * sign * speed_reward_coef
+                det_dist = np.clip(det_dist, -indicator_reward, indicator_reward)
+                reward += det_dist
+                if raw_dist >= orig_raw_dist: reward -= time_penalty_reward
+            elif self.reward_type == 'new':
+                # utilize delta reward but with different parameters
+                delta_raw_dist = orig_raw_dist - raw_dist
+                ratio = self.move_sensitivity / self.house.grid_det
+                new_reward = delta_raw_dist / ratio * new_reward_coef
+                new_reward = np.clip(new_reward, -new_reward_bound, new_reward_bound)
+                reward += new_reward
+                if raw_dist >= orig_raw_dist: reward -= time_penalty_reward   # always deduct time penalty
+                if (orig_raw_dist == 0) and (raw_dist > 0): reward -= new_leave_penalty  # big penalty when leave target room
 
         # object seen reward
-        if (raw_dist == 0) and (self.success_measure == 'see'):  # inside target room and success measure is <see>
-            if not done:
-                object_reward = np.clip((self._object_cnt - n_pixel_for_object_sense) / L_pixel_reward_range, 0., 1.) * self.pixelRew
-                reward += object_reward
+        if self.current_episode_step > self.reward_silence:
+            if (raw_dist == 0) and (self.success_measure == 'see'):  # inside target room and success measure is <see>
+                if not done:
+                    object_reward = np.clip((self._object_cnt - n_pixel_for_object_sense) / L_pixel_reward_range, 0., 1.) * self.pixelRew
+                    reward += object_reward
 
         if self.depth_signal:
             dep_sig = self.env.render(mode='depth')
