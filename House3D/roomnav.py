@@ -48,7 +48,7 @@ new_leave_penalty = 0.5
 new_stay_room_reward = 0.05
 new_success_stay_time_steps = 3
 new_success_reward = 10
-new_pixel_object_reward = 0.1
+new_pixel_object_reward = 0.4
 #####################################
 
 
@@ -198,6 +198,7 @@ class RoomNavTask(gym.Env):
         # episode counter
         self.current_episode_step = 0
         self.total_episode_cnt = 0
+        self._prev_object_see_rate = 0
 
         # config success measure
         assert success_measure in ['stay', 'see']
@@ -275,6 +276,7 @@ class RoomNavTask(gym.Env):
         self.current_episode_step = 0
         self.success_stay_cnt = 0
         self._object_cnt = 0
+        self._prev_object_see_rate = 0.0
 
         # reset house
         self.env.reset_house()
@@ -418,7 +420,9 @@ class RoomNavTask(gym.Env):
         if self.current_episode_step > self.reward_silence:
             if (raw_dist == 0) and (self.success_measure == 'see'):  # inside target room and success measure is <see>
                 if not done:
-                    object_reward = np.clip((self._object_cnt - n_pixel_for_object_sense) / L_pixel_reward_range, 0., 1.) * self.pixelRew
+                    curr_obj_see_rate = np.clip((self._object_cnt - n_pixel_for_object_sense) / L_pixel_reward_range, 0., 1.)
+                    object_reward = (curr_obj_see_rate - self._prev_object_see_rate) * self.pixelRew
+                    self._prev_object_see_rate = curr_obj_see_rate
                     reward += object_reward
 
         if self.depth_signal:
