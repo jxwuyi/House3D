@@ -73,6 +73,11 @@ bool BaseHouse::_setCurrentDistMap(const string& tag) {
 //////////////////////////////////////
 // location getter utility functions
 //////////////////////////////////////
+tuple<int,int> BaseHouse::_getRegionMask(const string& reg_tag) {
+  auto iter = regionInd.find(reg_tag);
+  if (iter == regionInd.end()) return make_tuple(-1,-1);
+  return regExpandMaskLis[iter->second];
+}
 // get valid coors and cache it
 int BaseHouse::_fetchValidCoorsSize(const string& reg_tag) {
     auto iter = regionInd.find(reg_tag);
@@ -461,14 +466,41 @@ bool BaseHouse::_genValidCoors(int x1, int y1, int x2, int y2, const string& reg
     if (regionInd.count(reg_tag) > 0) return false;
     int k = regValidCoorsLis.size();
     regionNames.push_back(reg_tag);
+    regInputBoxLis.push_back(make_tuple(x1,y1,x2,y2))
     regionInd[reg_tag] = k;
     regValidCoorsLis.push_back(vector<tuple<int,int> >({}));
+    regExpandMaskLis.push_back(make_tuple(-1,-1));
     auto& coors = regValidCoorsLis[k];
     auto dat = _find_components(x1, y1, x2, y2, true, false);
     auto& comp = dat[0]; // the largest components
     for(auto& p: *comp)
         coors.push_back(make_tuple(p.X, p.Y));
     return true;
+}
+
+// generate expanded mask for a region
+bool BaseHouse::_genExpandedRegionMask(const string& reg_tag) {
+  auto iter = regionInd.find(reg_tag);
+  if (iter == regionInd.end()) return false;  // no such region
+  int k = iter->second;
+  int in_msk, out_msk;
+  tie(in_msk, out_msk) = regExpandMaskLis[k];
+  if (in_msk > -1) return true; // do not need to compute again
+  in_msk = out_msk = 0;
+  int x, y, x1, y1, x2, y2;
+  tie(x1,y1,x2,y2) = regInputBoxLis[k];
+  for (auto& coor: regValidCoorsLis[k]) {
+    tie(x,y) = coor;
+    in_msk |= *targetMask.data(x,y)
+    for (int d=0;d<4;++d) {
+      int tx = x + DIRS[d][0], ty = y + DIRS[d][1];
+      if (_canMove(tx, ty) &&
+          (tx < x1 || tx > x2 || ty < y1 || ty > y2))
+          out_msk |= *targetMask.data(tx,ty);
+    }
+  }
+  regExpandMaskLis[k] = make_tuple(in_msk, out_msk);
+  return true;
 }
 
 // generate movable map

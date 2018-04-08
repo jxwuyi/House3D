@@ -47,6 +47,8 @@ class BaseHouse {
     vector<tuple<int,int> >* cur_connCoors;
     int cur_maxConnDist;
     vector<vector<tuple<int,int> > > regValidCoorsLis;
+    vector<tuple<int,int,int,int> > regInputBoxLis;
+    vector<tuple<int,int> > regExpandMaskLis;
     vector<tuple<int,int> >* last_regValidCoors;
     map<string, int> targetInd;  // index for targets <connMapLis, connCoorsLis, maxConnDistLis>
     vector<string> targetNames;  // list of target names
@@ -113,6 +115,8 @@ public:
     bool _genOutsideDistMap(const vector<BOX_TP>&boxes, const string& tag);
     // compute and cache valid positions in a region
     bool _genValidCoors(int x1, int y1, int x2, int y2, const string& reg_tag);
+    // compute target mask and connected mask for coors in a region
+    bool _genExpandedRegionMask(const string& reg_tag);
 
     /////////////////////////////////////////
     // Target Dist Map Setter Functions
@@ -140,6 +144,7 @@ public:
     //////////////////////////////////////
     // location getter utility functions
     //////////////////////////////////////
+    tuple<int,int> _getRegionMask(const string& reg_tag);
     // get valid coors and cache it
     int _fetchValidCoorsSize(const string& reg_tag);
     // return indexed coor from cached list

@@ -452,6 +452,13 @@ class House(_BaseHouse):
         if return_grid: return gx, gy
         return self.to_coor(gx, gy, True)
 
+    def getRegionMaskForRoom(self, room_node, return_grid=False):
+        reg_tag = room_node['id']
+        x1, y1, x2, y2 = self._getRoomBounds(room_node)
+        self._genValidCoors(x1, y1, x2, y2, reg_tag)
+        self._genExpandedRegionMask(reg_tag)
+        return self._getRegionMask(reg_tag)
+
     def getRandomLocationForRoom(self, room_node, return_grid=False):
         reg_tag = room_node['id']
         x1, y1, x2, y2 = self._getRoomBounds(room_node)

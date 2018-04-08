@@ -97,6 +97,7 @@ PYBIND11_MODULE(objrender, m) {
     .def("_genShortestDistMap", &BaseHouse::_genShortestDistMap)
     .def("_genOutsideDistMap", &BaseHouse::_genOutsideDistMap)
     .def("_genValidCoors", &BaseHouse::_genValidCoors)
+    .def("_genExpandedRegionMask", &BaseHouse::_genExpandedRegionMask)
     // Target Dist Map Setter Functions
     .def("_clearCurrentDistMap", &BaseHouse::_clearCurrentDistMap)
     .def("_setCurrentDistMap", &BaseHouse::_setCurrentDistMap)
@@ -106,6 +107,7 @@ PYBIND11_MODULE(objrender, m) {
     .def("_getValidCoors", &BaseHouse::_getValidCoors, py::return_value_policy::reference)
     .def("_getMaxConnDist", &BaseHouse::_getMaxConnDist)
     // Location Getter Utility Functions
+    .def("_getRegionMask", &BaseHouse::_getRegionMask)
     .def("_fetchValidCoorsSize", &BaseHouse::_fetchValidCoorsSize)
     .def("_getCachedIndexedValidCoor", &BaseHouse::_getCachedIndexedValidCoor)
     .def("_getConnectCoorsSize", &BaseHouse::_getConnectCoorsSize)
