@@ -170,6 +170,7 @@ class RoomNavTask(gym.Env):
         self.colideRew = collision_penalty_reward or 0.02
         self.goodMoveRew = correct_move_reward or 0.0
         self.pixelRew = (pixel_object_reward if reward_type != 'new' else new_pixel_object_reward) or 0.0
+        self.timePenalty = time_penalty_reward if reward_type != 'new' else new_time_penalty_reward
         self.succSeeSteps = (success_see_target_time_steps if reward_type != 'new' else new_success_stay_time_steps)
 
         self.last_obs = None
@@ -390,14 +391,14 @@ class RoomNavTask(gym.Env):
             elif self.reward_type == 'indicator':
                 if raw_dist != orig_raw_dist:  # indicator reward
                     reward += indicator_reward if raw_dist < orig_raw_dist else -indicator_reward
-                if raw_dist >= orig_raw_dist: reward -= time_penalty_reward
+                if raw_dist >= orig_raw_dist: reward -= self.timePenalty
             elif self.reward_type == 'delta':
                 delta_raw_dist = orig_raw_dist - raw_dist
                 ratio = self.move_sensitivity / self.house.grid_det
                 delta_reward = delta_raw_dist / ratio * delta_reward_coef
                 delta_reward = np.clip(delta_reward, -indicator_reward, indicator_reward)
                 reward += delta_reward
-                if raw_dist >= orig_raw_dist: reward -= time_penalty_reward
+                if raw_dist >= orig_raw_dist: reward -= self.timePenalty
             elif self.reward_type == 'speed':
                 movement = np.sqrt((self.last_info['pos'][0]-cur_info['pos'][0])**2
                                    + (self.last_info['pos'][1]-cur_info['pos'][1])**2)
@@ -405,7 +406,7 @@ class RoomNavTask(gym.Env):
                 det_dist = movement * sign * speed_reward_coef
                 det_dist = np.clip(det_dist, -indicator_reward, indicator_reward)
                 reward += det_dist
-                if raw_dist >= orig_raw_dist: reward -= time_penalty_reward
+                if raw_dist >= orig_raw_dist: reward -= self.timePenalty
             elif self.reward_type == 'new':
                 # utilize delta reward but with different parameters
                 delta_raw_dist = orig_raw_dist - raw_dist
@@ -413,7 +414,7 @@ class RoomNavTask(gym.Env):
                 new_reward = delta_raw_dist / ratio * new_reward_coef
                 new_reward = np.clip(new_reward, -new_reward_bound, new_reward_bound)
                 reward += new_reward
-                if raw_dist >= orig_raw_dist: reward -= time_penalty_reward   # always deduct time penalty
+                if raw_dist >= orig_raw_dist: reward -= self.timePenalty   # always deduct time penalty
                 if (orig_raw_dist == 0) and (raw_dist > 0): reward -= new_leave_penalty  # big penalty when leave target room
 
         # object seen reward
