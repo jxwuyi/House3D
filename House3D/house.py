@@ -461,8 +461,13 @@ class House(_BaseHouse):
             self._genValidCoors(x1, y1, x2, y2, reg_tag)
             self._genExpandedRegionMask(reg_tag)
         else:
-            reg_tag = room_node if isinstance(room_note, str) else room_node['id']
+            reg_tag = room_node if isinstance(room_node, str) else room_node['id']
         return self._getRegionMask(reg_tag)
+
+    def getRegionMaskForTarget(self, targetTp, is_cached=False):
+        if not is_cached:
+            self._genExpandedRegionMaskFromTargetMap(targetTp)
+        return self._getRegionMask(targetTp)
 
     def getRandomLocationForRoom(self, room_node, return_grid=False, is_cached=False):
         if not is_cached:

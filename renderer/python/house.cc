@@ -492,6 +492,7 @@ bool BaseHouse::_genExpandedRegionMask(const string& reg_tag) {
   tie(in_msk, out_msk) = regExpandMaskLis[k];
   if (in_msk > -1) return true; // do not need to compute again
   in_msk = out_msk = 0;
+  bool is_open = false;
   int x, y, x1, y1, x2, y2;
   tie(x1,y1,x2,y2) = regInputBoxLis[k];
   for (auto& coor: regValidCoorsLis[k]) {
@@ -500,10 +501,13 @@ bool BaseHouse::_genExpandedRegionMask(const string& reg_tag) {
     for (int d=0;d<4;++d) {
       int tx = x + DIRS[d][0], ty = y + DIRS[d][1];
       if (_canMove(tx, ty) &&
-          (tx < x1 || tx > x2 || ty < y1 || ty > y2))
+          (tx < x1 || tx > x2 || ty < y1 || ty > y2)) {
           out_msk |= *targetMask.data(tx,ty);
+          is_open = true;
+      }
     }
   }
+  if (! is_open) out_msk = -1;
   regExpandMaskLis[k] = make_tuple(in_msk, out_msk);
   return true;
 }
@@ -529,6 +533,7 @@ bool BaseHouse::_genExpandedRegionMaskFromTargetMap(const string& tag) {
             idxMap[INDEX(x,y,sz)] = 1;
             vector<tuple<int,int> > que;
             int in_mask = 0, out_mask = 0;
+            bool is_open = true;
             que.push_back(make_tuple(x,y));
             for(int ptr = 0; ptr < que.size(); ++ ptr) {
                 tie(x,y) = que[ptr];
@@ -539,12 +544,15 @@ bool BaseHouse::_genExpandedRegionMaskFromTargetMap(const string& tag) {
                         if (idxMap[INDEX(tx,ty,sz)] == 0) {
                             que.push_back(make_tuple(tx,ty));
                             idxMap[INDEX(tx,ty,sz)] = 1;
-                        } else {
+                        } else
+                        if (idxMap[INDEX(tx,ty,sz)] < 0)
                             out_mask |= *targetMask.data(tx,ty);
+                            is_open = true;
                         }
                     }
                 }
             }
+            if (! is_open) out_mask = -1;
             cp_msk.push_back(make_tuple(in_mask, out_mask));
             if (best_cp_id < 0 || que.size() > comps[best_cp_id].size())
                 best_cp_id = comps.size();
