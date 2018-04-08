@@ -98,7 +98,8 @@ class RoomNavTask(gym.Env):
                  success_measure='see',
                  discrete_action=False,
                  include_object_target=False,
-                 reward_silence=0):
+                 reward_silence=0,
+                 birthplace_curriculum_schedule=None):
         """RoomNav task wrapper with gym api
         Note:
             all the settings are the default setting to run a task
@@ -123,6 +124,7 @@ class RoomNavTask(gym.Env):
             discrete_action (bool, optional):  when true, use discrete actions; otherwise use continuous actions
             include_object_target (bool, optional): when true, target can be an object category
             reward_silence (int, optional): when set, the first <reward_silence> steps in each episode will not have reward other than collision penalty
+            birthplace_curriculum_schedule (<int,int,int>, optional): when set, it is <start_birthplace_steps, incremental, update_frequency>
         """
         self.env = env
         #assert isinstance(env, Environment), '[RoomNavTask] env must be an instance of Environment!'
@@ -179,13 +181,23 @@ class RoomNavTask(gym.Env):
         self.max_birthplace_steps = None
         self.availCoorsSize = None
         self._availCoorsSizeDict = None
-        self.reset_hardness(hardness, max_birthplace_steps)
+        if birthplace_curriculum_schedule is not None:
+            if (not hasattr(birthplace_curriculum_schedule, '__len__')) \
+                    or (len(birthplace_curriculum_schedule) != 3) \
+                    or (min(birthplace_curriculum_schedule) < 1):
+                print('>>> [RoomNav] Error! <birthplace_curriculum_schedule> must be a positive int triple! reset to None!')
+                birthplace_curriculum_schedule = None
+        self.curriculum_schedule = birthplace_curriculum_schedule
+        self.reset_hardness(hardness, max_birthplace_steps if birthplace_curriculum_schedule is None else birthplace_curriculum_schedule[0])
+        if self.curriculum_schedule is not None:
+            self.curriculum_schedule = (max_birthplace_steps, birthplace_curriculum_schedule[1], birthplace_curriculum_schedule[2])
 
         # temp storage
         self.collision_flag = False
 
         # episode counter
         self.current_episode_step = 0
+        self.total_episode_cnt = 0
 
         # config success measure
         assert success_measure in ['stay', 'see']
@@ -250,6 +262,15 @@ class RoomNavTask(gym.Env):
     when target is not None, we will set the target room type to navigate to
     """
     def reset(self, target=None):
+        # increase episode counter
+        self.total_episode_cnt += 1
+        if (self.curriculum_schedule is not None) \
+            and (self.total_episode_cnt % self.curriculum_schedule[2] == 0) \
+            and (self.max_birthplace_steps < self.curriculum_schedule[0]):  # curriculum learning
+            next_birthplace_steps = min(self.max_birthplace_steps + self.curriculum_schedule[1],
+                                        self.curriculum_schedule[0])
+            self.reset_hardness(self.hardness, max_birthplace_steps=next_birthplace_steps)
+
         # clear episode steps
         self.current_episode_step = 0
         self.success_stay_cnt = 0
