@@ -454,17 +454,23 @@ class House(_BaseHouse):
         if return_grid: return gx, gy
         return self.to_coor(gx, gy, True)
 
-    def getRegionMaskForRoom(self, room_node):
-        reg_tag = room_node['id']
-        x1, y1, x2, y2 = self._getRoomBounds(room_node)
-        self._genValidCoors(x1, y1, x2, y2, reg_tag)
-        self._genExpandedRegionMask(reg_tag)
+    def getRegionMaskForRoom(self, room_node, is_cached=False):
+        if not is_cached:
+            reg_tag = room_node['id']
+            x1, y1, x2, y2 = self._getRoomBounds(room_node)
+            self._genValidCoors(x1, y1, x2, y2, reg_tag)
+            self._genExpandedRegionMask(reg_tag)
+        else:
+            reg_tag = room_node if isinstance(room_note, str) else room_node['id']
         return self._getRegionMask(reg_tag)
 
-    def getRandomLocationForRoom(self, room_node, return_grid=False):
-        reg_tag = room_node['id']
-        x1, y1, x2, y2 = self._getRoomBounds(room_node)
-        self._genValidCoors(x1, y1, x2, y2, reg_tag)
+    def getRandomLocationForRoom(self, room_node, return_grid=False, is_cached=False):
+        if not is_cached:
+            reg_tag = room_node['id']
+            x1, y1, x2, y2 = self._getRoomBounds(room_node)
+            self._genValidCoors(x1, y1, x2, y2, reg_tag)
+        else:
+            reg_tag = room_node if isinstance(room_node, str) else room_node['id']
         sz = self._fetchValidCoorsSize(reg_tag)
         if sz == 0: return None
         gx, gy = self._getCachedIndexedValidCoor(np.random.randint(sz))
