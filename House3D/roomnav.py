@@ -76,11 +76,11 @@ pixel_object_reward = 0.4
 # Util Functions
 #################
 
-def reset_see_criteria(resolution):
+def reset_see_criteria(resolution, lo_rate=0.005, up_rate=0.045):
     total_pixel = resolution[0] * resolution[1]
     global n_pixel_for_object_see, n_pixel_for_object_sense, L_pixel_reward_range
-    n_pixel_for_object_see = max(int(total_pixel * 0.045), 5)
-    n_pixel_for_object_sense = max(int(total_pixel * 0.005), 1)
+    n_pixel_for_object_see = max(int(total_pixel * up_rate), 5)
+    n_pixel_for_object_sense = max(int(total_pixel * lo_rate), 1)
     L_pixel_reward_range = n_pixel_for_object_see - n_pixel_for_object_sense
 
 
@@ -288,7 +288,7 @@ class RoomNavTask(gym.Env):
             act = action[0]
             return (act[0] - act[1]), (act[2] - act[3]), rot
 
-    def _is_success(self, raw_dist):
+    def _is_success(self, raw_dist, grid):
         if raw_dist > 0:
             self.success_stay_cnt = 0
             return False
@@ -346,7 +346,7 @@ class RoomNavTask(gym.Env):
         raw_scaled_dist = cur_info['scaled_dist']
         dist = raw_scaled_dist * self.dist_scale
         done = False
-        if self._is_success(raw_dist):
+        if self._is_success(raw_dist, cur_info['grid']):
             reward += self.successRew
             done = True
         # accumulate episode step
