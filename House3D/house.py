@@ -745,9 +745,18 @@ class House(_BaseHouse):
         self._flag_graph_init = True
         return True
 
-    def get_target_mask(self, cx, cy):
-        tags = self._get_target_mask_names(cx, cy, False)
-        return tags
+    def get_target_mask(self, cx, cy, return_names=True):
+        if return_names:
+            return self._get_target_mask_names(cx, cy, False)
+        else:
+            return self._get_target_mask(cx, cy, False)
+
+    def get_target_mask_grid(self, gx, gy, return_names=False):
+        if return_names:
+            cx, cy = self.to_coor(gx, gy, True)
+            return self.get_target_mask(cx, cy, True)
+        else:
+            return self._get_target_mask_grid(gx, gy, False)
 
     def get_optimal_plan(self, cx, cy, target):
         assert target in self.all_desired_targetTypes
