@@ -99,7 +99,8 @@ class RoomNavTask(gym.Env):
                  discrete_action=False,
                  include_object_target=False,
                  reward_silence=0,
-                 birthplace_curriculum_schedule=None):
+                 birthplace_curriculum_schedule=None,
+                 false_rate=0.0):
         """RoomNav task wrapper with gym api
         Note:
             all the settings are the default setting to run a task
@@ -125,7 +126,10 @@ class RoomNavTask(gym.Env):
             include_object_target (bool, optional): when true, target can be an object category
             reward_silence (int, optional): when set, the first <reward_silence> steps in each episode will not have reward other than collision penalty
             birthplace_curriculum_schedule (<int,int,int>, optional): when set, it is <start_birthplace_steps, incremental, update_frequency>
+            false_rate: the rate of task that the target is not reachable
         """
+        assert false_rate < 1e-8, 'Currently Only Support Valid Tasks!!!! False_Rate Must Be 0.0!!!'
+
         self.env = env
         #assert isinstance(env, Environment), '[RoomNavTask] env must be an instance of Environment!'
         if env.resolution != (120, 90): reset_see_criteria(env.resolution)
