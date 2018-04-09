@@ -97,7 +97,9 @@ if __name__ == '__main__':
     api = objrender.RenderAPI(w=400, h=300, device=0)
     env = MultiHouseEnv(api, all_houses, config=CFG, parallel_init=flag_parallel_init)
     #env = Environment(api, all_houses[0], config=CFG)
-    task = RoomNavTask(env, hardness=0.6, reward_type='new', max_birthplace_steps=30, discrete_action=True, include_object_target=True)
+    task = RoomNavTask(env, hardness=0.6, reward_type='new', max_birthplace_steps=30,
+                       discrete_action=True, include_object_target=True,
+                       reward_silence=5, birthplace_curriculum_schedule=(2, 2, 2))
     dur = time.time() - ts
     print('  --> Time Elapsed = %.6f (s)' % dur)
 
