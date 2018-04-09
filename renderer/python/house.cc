@@ -375,7 +375,7 @@ int BaseHouse::_get_target_mask_grid(int gx, int gy, bool only_object) {
 int BaseHouse::_get_target_mask(double cx, double cy, bool only_object) {
   int gx, gy;
   tie(gx, gy) = _to_grid(cx, cy, n);
-  return _get_target_mask_grid(gx, gy);
+  return _get_target_mask_grid(gx, gy, only_object);
 }
 
 // return the target names associated with coor (cx, cy)
@@ -471,7 +471,7 @@ bool BaseHouse::_genValidCoors(int x1, int y1, int x2, int y2, const string& reg
     if (regionInd.count(reg_tag) > 0) return false;
     int k = regValidCoorsLis.size();
     regionNames.push_back(reg_tag);
-    regInputBoxLis.push_back(make_tuple(x1,y1,x2,y2))
+    regInputBoxLis.push_back(make_tuple(x1,y1,x2,y2));
     regionInd[reg_tag] = k;
     regValidCoorsLis.push_back(vector<tuple<int,int> >({}));
     regExpandMaskLis.push_back(make_tuple(-1,-1));
@@ -497,7 +497,7 @@ bool BaseHouse::_genExpandedRegionMask(const string& reg_tag) {
   tie(x1,y1,x2,y2) = regInputBoxLis[k];
   for (auto& coor: regValidCoorsLis[k]) {
     tie(x,y) = coor;
-    in_msk |= *targetMask.data(x,y)
+    in_msk |= *targetMask.data(x,y);
     for (int d=0;d<4;++d) {
       int tx = x + DIRS[d][0], ty = y + DIRS[d][1];
       if (_canMove(tx, ty) &&
@@ -517,7 +517,7 @@ bool BaseHouse::_genExpandedRegionMaskFromTargetMap(const string& tag) {
     auto iter = targetInd.find(tag);
     if (iter == targetInd.end()) return false;
     if (regionInd.count(tag) > 0) return false;
-    auto& valid_coors = connCoorsLis[k];
+    auto& valid_coors = connCoorsLis[iter->second];
     int sz = n + 1;
     int* idxMap = _get_mem<int>(sz*sz+1, -1);
     for(auto& coor: valid_coors) {
@@ -535,7 +535,7 @@ bool BaseHouse::_genExpandedRegionMaskFromTargetMap(const string& tag) {
             int in_mask = 0, out_mask = 0;
             bool is_open = true;
             que.push_back(make_tuple(x,y));
-            for(int ptr = 0; ptr < que.size(); ++ ptr) {
+            for(size_t ptr = 0; ptr < que.size(); ++ ptr) {
                 tie(x,y) = que[ptr];
                 in_mask |= *targetMask.data(x,y);
                 for (int d=0;d<4;++d) {
@@ -545,7 +545,7 @@ bool BaseHouse::_genExpandedRegionMaskFromTargetMap(const string& tag) {
                             que.push_back(make_tuple(tx,ty));
                             idxMap[INDEX(tx,ty,sz)] = 1;
                         } else
-                        if (idxMap[INDEX(tx,ty,sz)] < 0)
+                        if (idxMap[INDEX(tx,ty,sz)] < 0) {
                             out_mask |= *targetMask.data(tx,ty);
                             is_open = true;
                         }
