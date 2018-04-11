@@ -745,6 +745,17 @@ class House(_BaseHouse):
         self._flag_graph_init = True
         return True
 
+    def get_global_mask_feature(self, cx, cy):
+        local_msk = self._get_target_mask(cx, cy, False)
+        ret_msk = np.zeros(len(ALLOWED_TARGET_ROOM_TYPES)+len(ALLOWED_OBJECT_TARGET_TYPES), dtype=np.uint8)
+        n_room = len(self.all_desired_roomTypes)
+        for i, t in enumerate(self.all_desired_roomTypes):
+            if (local_msk & (1 << i)) > 0: ret_msk[ALLOWED_PREDICTION_ROOM_TYPES[t]] = 1
+        local_msk >>= n_room
+        for i, t in enumerate(self.all_desired_targetObj):
+            if (local_msk & (1 << i)) > 0: ret_msk[ALLOWED_OBJECT_TARGET_INDEX[t]] = 1
+        return ret_msk
+
     def get_target_mask(self, cx, cy, return_names=True):
         if return_names:
             return self._get_target_mask_names(cx, cy, False)
@@ -754,7 +765,7 @@ class House(_BaseHouse):
     def get_target_mask_grid(self, gx, gy, return_names=False):
         if return_names:
             cx, cy = self.to_coor(gx, gy, True)
-            return self.get_target_mask(cx, cy, True)
+            return self.get_target_mask_names(cx, cy, False)
         else:
             return self._get_target_mask_grid(gx, gy, False)
 
