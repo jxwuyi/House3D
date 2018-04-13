@@ -101,6 +101,7 @@ class RoomNavTask(gym.Env):
                  include_object_target=False,
                  reward_silence=0,
                  birthplace_curriculum_schedule=None,
+                 target_mask_signal=False,
                  false_rate=0.0):
         """RoomNav task wrapper with gym api
         Note:
@@ -120,6 +121,7 @@ class RoomNavTask(gym.Env):
             segment_input (bool, optional): whether to use semantic segmentation mask for observation
             joint_visual_signal (bool, optional): when true, use both visual signal and segmentation mask as observation
                                                   when true, segment_input will be set true accordingly
+            target_mask_signal (bool, optional): when true, the last channel of input will be a 0/1 mask indicating the pixel of the target category
             depth_signal (bool, optional): whether to include depth signal in observation
             max_steps (int, optional): when max_steps > 0, the task will be cut after <max_steps> steps
             success_measure (str, optional): criteria for success, currently support 'see' and 'stay'
@@ -142,6 +144,7 @@ class RoomNavTask(gym.Env):
         self.segment_input = segment_input
         self.joint_visual_signal = joint_visual_signal
         self.depth_signal = depth_signal
+        self.target_mask_signal = target_mask_signal
         n_channel = 3
         if segment_input:
             self.env.set_render_mode('semantic')
@@ -149,6 +152,7 @@ class RoomNavTask(gym.Env):
             self.env.set_render_mode('rgb')
         if joint_visual_signal: n_channel += 3
         if depth_signal: n_channel += 1
+        if target_mask_signal: n_channel += 1
         self._observation_shape = (resolution[0], resolution[1], n_channel)
         self._observation_space = spaces.Box(0, 255, shape=self._observation_shape)
 
@@ -181,6 +185,8 @@ class RoomNavTask(gym.Env):
 
         self.last_obs = None
         self.last_info = None
+        self._cached_seg = None
+        self._cached_mask = None if not target_mask_signal else np.zeros(self.resolution, dtype=np.uint8)
         self._object_cnt = 0
 
         # config hardness
@@ -297,6 +303,7 @@ class RoomNavTask(gym.Env):
         x, y = self.house.getIndexedConnectedLocation(np.random.randint(self.availCoorsSize))
 
         # generate state
+        self._cached_seg = None
         self.env.reset(x=x, y=y)
         self.last_obs = self.env.render()
         if self.joint_visual_signal:
@@ -307,6 +314,8 @@ class RoomNavTask(gym.Env):
             if dep_sig.shape[-1] > 1:
                 dep_sig = dep_sig[..., 0:1]
             ret_obs = np.concatenate([ret_obs, dep_sig], axis=-1)
+        if self.target_mask_signal:
+            ret_obs = np.concatenate([ret_obs, self._gen_target_mask()], axis=-1)
         self.last_info = self.info
         return ret_obs
 
@@ -318,6 +327,25 @@ class RoomNavTask(gym.Env):
             act = action[0]
             return (act[0] - act[1]), (act[2] - act[3]), rot
 
+    def _fetch_cached_segmentation(self):
+        if (self.last_obs is not None) and self.segment_input:
+            seg_obs = self.last_obs if not self.joint_visual_signal else self.last_obs[:,:,3:6]
+        else:
+            if self._cached_seg is None: self._cached_seg = self.env.render(mode='semantic')
+            seg_obs = self._cached_seg
+        return seg_obs
+
+    """
+    return 0/1 binary mask, indicating the target pixels
+    """
+    def _gen_target_mask(self):
+        self._cached_mask[:, :] = 0
+        seg_obs = self._fetch_cached_segmentation()
+        object_color_list = self.room_target_object[self.house.targetRoomTp]
+        for c in object_color_list:
+            self._cached_mask[np.all(seg_obs==c, axis=2)]=1
+        return self._cached_mask
+
     def _is_success(self, raw_dist, grid):
         if raw_dist > 0:
             self.success_stay_cnt = 0
@@ -328,17 +356,19 @@ class RoomNavTask(gym.Env):
         # self.success_measure == 'see'
         object_color_list = self.room_target_object[self.house.targetRoomTp]
         flag_see_target_objects = (len(object_color_list) == 0)
-        if (self.last_obs is not None) and self.segment_input:
-            seg_obs = self.last_obs if not self.joint_visual_signal else self.last_obs[:,:,3:6]
-        else:
-            seg_obs = self.env.render(mode='semantic')
-        self._object_cnt = 0
-        for c in object_color_list:
-            cur_n = np.sum(np.all(seg_obs == c, axis=2))
-            self._object_cnt += cur_n
+        if self._cached_mask is not None:
+            self._object_cnt = np.sum(self._cached_mask)
             if self._object_cnt >= n_pixel_for_object_see:
                 flag_see_target_objects = True
-                break
+        else:
+            seg_obs = self._fetch_cached_segmentation()
+            self._object_cnt = 0
+            for c in object_color_list:
+                cur_n = np.sum(np.all(seg_obs == c, axis=2))
+                self._object_cnt += cur_n
+                if self._object_cnt >= n_pixel_for_object_see:
+                    flag_see_target_objects = True
+                    break
         if flag_see_target_objects:
             self.success_stay_cnt += 1
         else:
@@ -367,9 +397,20 @@ class RoomNavTask(gym.Env):
             if flag_print_debug_info:
                 print('Move Successfully!')
 
+        # generate observation
+        self._cached_seg = None
         self.last_obs = obs = self.env.render()
         if self.joint_visual_signal:
             self.last_obs = obs = np.concatenate([self.env.render(mode='rgb'), obs], axis=-1)
+        if self.depth_signal:
+            dep_sig = self.env.render(mode='depth')
+            if dep_sig.shape[-1] > 1:
+                dep_sig = dep_sig[..., 0:1]
+            obs = np.concatenate([obs, dep_sig], axis=-1)
+        if self.target_mask_signal:
+            obs = np.concatenate([obs, self._gen_target_mask()], axis=-1)
+
+        # compute reward
         cur_info = self.info
         raw_dist = cur_info['dist']
         orig_raw_dist = self.last_info['dist']
@@ -431,12 +472,6 @@ class RoomNavTask(gym.Env):
                     object_reward = self.pixelRew * (curr_obj_see_rate if self.reward_type != 'new' else (curr_obj_see_rate - self._prev_object_see_rate))
                     self._prev_object_see_rate = curr_obj_see_rate
                     reward += object_reward
-
-        if self.depth_signal:
-            dep_sig = self.env.render(mode='depth')
-            if dep_sig.shape[-1] > 1:
-                dep_sig = dep_sig[..., 0:1]
-            obs = np.concatenate([obs, dep_sig], axis=-1)
         self.last_info = cur_info
         return obs, reward, done, cur_info
 
