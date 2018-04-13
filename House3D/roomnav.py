@@ -186,7 +186,7 @@ class RoomNavTask(gym.Env):
         self.last_obs = None
         self.last_info = None
         self._cached_seg = None
-        self._cached_mask = None if not target_mask_signal else np.zeros((self.resolution[0],self.resolution[1],1), dtype=np.uint8)
+        self._cached_mask = None if not target_mask_signal else np.zeros((self.resolution[1],self.resolution[0],1), dtype=np.uint8)
         self._object_cnt = 0
 
         # config hardness
