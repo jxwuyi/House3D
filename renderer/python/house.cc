@@ -8,12 +8,13 @@ namespace render {
 #define X first
 #define Y second
 #define INDEX(x,y,n) ((x) * (n) + (y))
+#define STATE_ID(x,y,d,n,nd) (INDEX(x,y,n)*(nd)+(d))
 
 const double eps = 1e-9;
 const int DIRS[4][2] = {{0,1},{1,0},{0,-1},{-1,0}};
 
 template<class T>
-T* _get_mem(int size, int val=0) {
+T* _get_mem(int size, T val=0) {
     T* ptr = new T[size];
     memset(ptr, val, sizeof(T) * size);
     return ptr;
@@ -135,6 +136,22 @@ int BaseHouse::_getCurrConnectCoorsSize_Bounded(int bound){
     return hi;
 }
 tuple<int,int> BaseHouse::_getCurrIndexedConnectCoor(int k){ return (*cur_connCoors)[k]; }
+
+// fetch function for supervision signals
+bool BaseHouse::_fetchSupervisionMap(const string& tag) {
+    auto iter = targetInd.find(tag);
+    if (iter == targetInd.end() || iter->second >= (int)supMapLis.size()) return false;
+    cur_supMap = &supMapLis[iter->second];
+    return true;
+}
+
+// get supervision for current grid (gx, gy, deg)
+int BaseHouse::_getSupervise(int gx, int gy, int deg) {
+    if (cur_supMap == nullptr) return -1;
+    int mask = *(*cur_supMap).data(gx, gy, deg);
+    if (mask == 0) return -1;
+    return __builtin_ctz(mask);
+}
 
 //////////////////////////////////////////////////
 // range check and utility functions
@@ -739,6 +756,117 @@ bool BaseHouse::_genOutsideDistMap(const vector<BOX_TP>&boxes, const string& tag
         coors.push_back(make_tuple(p.X, p.Y));
     for(auto&p: inside)
         coors.push_back(make_tuple(p.X, p.Y));
+    return true;
+}
+
+
+// compute supervision map for all the cached targets
+//    --> if already computed, false will be returned
+bool BaseHouse::_genSupervisionMap(const vector<tuple<double,double,double,double>>& angle_dirs,
+                                   const vector<tuple<double,double,int>>& actions)
+{
+    if (supMapLis.size() == connMapLis.size()) return false;  // already computed before
+    int n_deg = angle_dirs.size();
+    int sz = n + 1;
+    int n_target = connMapLis.size();
+    int opt_size = sz * sz * n_deg + 1;
+    int* opt = _get_mem<int>(opt_size,-1);
+    unsigned char* avail_actions = _get_mem<unsigned char>(opt_size, 0);
+    for (int gx=0;gx<sz;++gx)
+        for (int gy=0;gy<sz;++gy) {
+            if (*moveMap.data(gx,gy) <= 0) continue;
+            // get continuous location (cx,cy)
+            double cx, cy;
+            tie(cx,cy) = _to_coor(gx,gy,true);
+            for (int td=0;td<n_deg;++td) {
+                int state = STATE_ID(gx,gy,td,sz,n_deg);
+                // fetch direction vector
+                double dx_frt, dy_frt, dx_rght, dy_rght;
+                tie(dx_frt, dy_frt, dx_rght, dy_rght) = angle_dirs[td];
+                // enumerate action
+                for(size_t i=0;i<actions.size();++i) {
+                    double det_frt, det_rght;
+                    int det_deg;
+                    tie(det_frt, det_rght, det_deg) = actions[i];
+                    if (det_deg != 0) // only rotation
+                        avail_actions[state] |= 1 << (unsigned char)(i);
+                    else {  // move action
+                        double sx, sy; // deg keeps unchanged!!
+                        sx = cx - dx_frt * det_frt - dx_rght * det_rght;
+                        sy = cy - dy_frt * det_frt - dy_rght * det_rght;
+                        int tx, ty;
+                        tie(tx, ty) = _to_grid(sx, sy, n);
+                        if (tx <= 0 || ty <= 0 || tx >= n || ty >= n || *moveMap.data(tx, ty) <= 0) continue;
+                        if (!_fast_collision_check(cx, cy, sx, sy, 10)) continue;
+                        avail_actions[state] |= 1 << (unsigned char)(i);
+                    }
+                }
+            }
+        }
+    for (int k = (int)supMapLis.size(); k < n_target; ++ k) {
+        memset(opt, -1, sizeof(int) * opt_size);
+        auto& connMap = connMapLis[k];
+        auto& coors = connCoorsLis[k];
+        supMapLis.push_back(py::array_t<unsigned char>({sz, sz, n_deg}, _get_mem<unsigned char>(sz * sz * n_deg + 1, 0)));
+        auto& supMap = supMapLis[k];
+        queue<int> que;
+        for(size_t i=0;i<coors.size();++i) {
+            int gx, gy;
+            tie(gx,gy) = coors[i];
+            int dist = *connMap.data(gx,gy);
+            if (dist * grid_det > 0.15) break;  // start with locations within the target range
+            for(int d=0;d<n_deg;++d) {
+                int state = STATE_ID(gx,gy,d,sz,n_deg);
+                opt[state] = 0;
+                que.push(state);
+            }
+        }
+        while(!que.empty()) {
+            int state = que.front(); que.pop();
+            int step = opt[state];
+            // fetch (x,y,d)
+            int gx,gy,td,_t_state=state;
+            td = _t_state % n_deg; _t_state /= n_deg;
+            gy = _t_state % sz; gx = _t_state / sz;
+            // get continuous location (cx,cy)
+            double cx, cy;
+            tie(cx,cy) = _to_coor(gx,gy,true);
+            // fetch direction vector
+            double dx_frt, dy_frt, dx_rght, dy_rght;
+            tie(dx_frt, dy_frt, dx_rght, dy_rght) = angle_dirs[td];
+            // check all valid actions
+            int action_mask = avail_actions[state];
+            //if (step == 0) action_mask &= 1;   // NOTE: last action must be forward!!!!
+            for(; action_mask > 0; action_mask &= action_mask - 1) {
+                int i = __builtin_ctz(action_mask);
+                double det_frt, det_rght;
+                int det_deg;
+                tie(det_frt, det_rght, det_deg) = actions[i];
+                int nxt_x = gx, nxt_y = gy, nxt_d = td;
+                if (det_deg == 0) {
+                    // this is a move action!
+                    double sx, sy;
+                    sx = cx - dx_frt * det_frt - dx_rght * det_rght;
+                    sy = cy - dy_frt * det_frt - dy_rght * det_rght;
+                    tie(nxt_x, nxt_y) = _to_grid(sx, sy, n);
+                } else {
+                    nxt_d = (td - det_deg + n_deg) % n_deg;
+                }
+                // from (nxt_x,nxt_y,nxt_d) take action_i, lead to (gx, gy, td)
+                int nxt_state = STATE_ID(nxt_x, nxt_y, nxt_d, sz, n_deg);
+                if (opt[nxt_state] < 0) {
+                    opt[nxt_state] = step + 1;
+                    que.push(nxt_state);
+                    *supMap.mutable_data(nxt_x, nxt_y, nxt_d) |= 1 << (unsigned char)(i);
+                } else
+                    if (opt[nxt_state] == step + 1) {
+                        *supMap.mutable_data(nxt_x, nxt_y, nxt_d) |= 1 << (unsigned char)(i);
+                    }
+            }
+        }
+    }
+    delete opt;
+    delete avail_actions;
     return true;
 }
 

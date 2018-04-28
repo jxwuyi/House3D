@@ -55,16 +55,24 @@ new_pixel_reward_rate = 0.25
 
 # sensitivity setting
 rotation_sensitivity = 30  # 45   # maximum rotation per time step
+discrete_rotation_sensitivity = 15
 default_move_sensitivity = 0.5  # 1.0   # maximum movement per time step
 
 # discrete action space actions, totally <13> actions
 # Fwd, L, R, LF, RF, Lrot, Rrot, Bck, s-Fwd, s-L, s-R, s-Lrot, s-Rrot, Stay
-discrete_actions=[(1.,0.,0.), (0.,1.,0.), (0.,-1.,0.), (0.5,0.5,0.), (0.5,-0.5,0.),
+# NOTE: at most 8 actions!!!!
+# NOTE: allowed_actions_for_supversion[0] must be 0!!!!!!
+allowed_actions_for_supversion = [0, 8, 3, 4, 5, 6, 11, 12]  # Fwd, LF, RF, Lrot, Rrot, s-Fwd, s-Lrot, s-Rrot
+#allowed_actions_for_supversion = [0, 1, 2, 5, 6, 8, 11, 12]  # Fwd, L, R, Lrot, Rrot, s-Fwd, s-Lrot, s-Rrot
+discrete_angle_delta_value = [0, 0, 0, 0, 0, 2, -2, 0, 0, 0, 0, 1, -1, 0]
+discrete_actions=[(1.,0.,0.), (0.,1.,0.), (0.,-1.,0.), (0.4,0.4,0.), (0.4,-0.4,0.),
                   (0.,0.,1.), (0.,0.,-1.),
                   (-0.4,0.,0.),
                   (0.4,0.,0.), (0.,0.4,0.), (0.,-0.4,0.),
-                  (0.,0.,0.4), (0.,0.,-0.4), (0., 0., 0.)]
+                  (0.,0.,0.5), (0.,0.,-0.5), (0., 0., 0.)]
 n_discrete_actions = len(discrete_actions)
+discrete_action_names = ['Forward', 'Left', 'Right', 'Left-Fwd', 'Right-Fwd', 'Left-Rotate', 'Right-Rotate',
+                         'Backward', 'Small-Forward', 'Small-Left', 'Small-Right', 'Small-Left-Rot', 'Small-Right-Rot', 'Stay']
 
 # criteria for seeing the object
 n_pixel_for_object_see = 450   # need at least see 450 pixels for success under default resolution 120 x 90
@@ -102,7 +110,9 @@ class RoomNavTask(gym.Env):
                  reward_silence=0,
                  birthplace_curriculum_schedule=None,
                  target_mask_signal=False,
-                 false_rate=0.0):
+                 false_rate=0.0,
+                 discrete_angle=False,
+                 supervision_signal=False):
         """RoomNav task wrapper with gym api
         Note:
             all the settings are the default setting to run a task
@@ -130,6 +140,8 @@ class RoomNavTask(gym.Env):
             reward_silence (int, optional): when set, the first <reward_silence> steps in each episode will not have reward other than collision penalty
             birthplace_curriculum_schedule (<int,int,int>, optional): when set, it is <start_birthplace_steps, incremental, update_frequency>
             false_rate: the rate of task that the target is not reachable
+            discrete_angle: when True, the angle is always a multiplier of <discrete_rotation_sensitivity>
+            supervision_signal: when True, we will cache the supervision signal for all the targets in all the houses
         """
         assert false_rate < 1e-8, 'Currently Only Support Valid Tasks!!!! False_Rate Must Be 0.0!!!'
 
@@ -204,6 +216,41 @@ class RoomNavTask(gym.Env):
         self.reset_hardness(hardness, max_birthplace_steps if birthplace_curriculum_schedule is None else birthplace_curriculum_schedule[0])
         if self.curriculum_schedule is not None:
             self.curriculum_schedule = (max_birthplace_steps, birthplace_curriculum_schedule[1], birthplace_curriculum_schedule[2])
+        self.discrete_angle = None
+        self._yaw_ind = None
+        if discrete_angle:
+            assert 360 % discrete_rotation_sensitivity == 0, 'When discrete_angle, 360 must be divided by <discrete_rotation_sensitivity = {}>!'.format(rotation_sensitivity)
+            self.discrete_angle = 360 // discrete_rotation_sensitivity
+        self.supervision_signal = supervision_signal
+        if supervision_signal:
+            assert (discrete_angle and discrete_action), 'When <supervision_signal>, <discrete_angle> AND <discrete_action> must be True!'
+            assert (len(allowed_actions_for_supversion) <= 8), 'Only support <allowed_actions_for_supversion> containing at most 8 actions!'
+            # assume shortest paths have been cached
+            self._angle_dir = []
+            _t_info = self.env.info
+            _cx, _cy = _t_info['loc']
+            _yaw = _t_info['yaw']
+            for d in range(self.discrete_angle):
+                self.env.reset(x=_cx,y=_cy,yaw=d * discrete_rotation_sensitivity - 180.0)
+                _frt = self.env.get_front_dir()
+                _rght = self.env.get_right_dir()
+                self._angle_dir.append((_frt[0], _frt[1], _rght[0], _rght[1]))
+            self._allowed_sup_action_idx = allowed_actions_for_supversion
+            self._allowed_sup_actions = []
+            for a in self._allowed_sup_action_idx:
+                dx,dy,dd = discrete_actions[a]
+                if dd < -0.7:
+                    action=(dx,dy,-2)
+                elif dd < -0.1:
+                    action=(dx,dy,-1)
+                elif dd < 0.1:
+                    action=(dx,dy,0)
+                elif dd < 0.7:
+                    action=(dx,dy,1)
+                else:
+                    action=(dx,dy,2)
+                self._allowed_sup_actions.append(action)
+            self.env.cache_supervision(self._angle_dir, self._allowed_sup_actions)
 
         # temp storage
         self.collision_flag = False
@@ -252,6 +299,7 @@ class RoomNavTask(gym.Env):
         #else:
         #    assert target in desired_target_list, '[RoomNavTask] desired target <{}> does not exist in the current house!'.format(target)
         if self.house.setTargetRoom(target):  # target room changed!!!
+            self.house.load_supervision_map(target)
             _id = self.house._id
             if self.house.targetRoomTp not in self._availCoorsSizeDict[_id]:
                 if (self.hardness is None) and (self.max_birthplace_steps is None):
@@ -301,10 +349,14 @@ class RoomNavTask(gym.Env):
 
         # general birth place
         x, y = self.house.getIndexedConnectedLocation(np.random.randint(self.availCoorsSize))
+        yaw = None
+        if self.discrete_angle is not None:
+            self._yaw_ind = np.random.randint(self.discrete_angle)
+            yaw = self._yaw_ind * discrete_rotation_sensitivity - 180.0
 
         # generate state
         self._cached_seg = None
-        self.env.reset(x=x, y=y)
+        self.env.reset(x=x, y=y, yaw=yaw)
         self.last_obs = self.env.render()
         if self.joint_visual_signal:
             self.last_obs = np.concatenate([self.env.render(mode='rgb'), self.last_obs], axis=-1)
@@ -394,6 +446,8 @@ class RoomNavTask(gym.Env):
             self.collision_flag = True
         else:
             self.collision_flag = False
+            if self.discrete_angle is not None:
+                self._yaw_ind = (self._yaw_ind + discrete_angle_delta_value[action] + self.discrete_angle) % self.discrete_angle
             if flag_print_debug_info:
                 print('Move Successfully!')
 
@@ -492,6 +546,10 @@ class RoomNavTask(gym.Env):
         ret['optsteps'] = int(dist / (self.move_sensitivity / self.house.grid_det) + 0.5)
         ret['collision'] = int(self.collision_flag)
         ret['target_room'] = self.house.targetRoomTp
+        if self.supervision_signal:
+            sup_act = self.house.get_supervision(gx, gy, self._yaw_ind)
+            if sup_act >= 0: sup_act = self._allowed_sup_action_idx[sup_act]
+            ret['supervision'] =  sup_act
         return ret
 
     def get_current_target(self):

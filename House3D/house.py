@@ -147,7 +147,7 @@ class House(_BaseHouse):
                  RobotRadius=0.1,
                  RobotHeight=0.75,  # 1.0,
                  CarpetHeight=0.15,
-                 ObjectTargetSuccRange=0.7,
+                 ObjectTargetSuccRange=0.5,
                  SetTarget=True,
                  BuildTargetGraph=False,
                  IncludeOutdoorTarget=False,
@@ -525,6 +525,28 @@ class House(_BaseHouse):
             self.setTargetRoom(t)
         self.init_graph()
         self.setTargetRoom(self.default_roomTp)
+
+    """
+    cache the supervision signals at each location
+    """
+    def cache_supervision(self, deg_dir, actions):
+        print('[House] caching supervision signal for all targets ....')
+        dur = time.time()
+        self._genSupervisionMap(deg_dir, actions)
+        dur = time.time() - dur
+        print(' >> Done! Time Elapsed = %.3fs (n_target = %d, Avg %.3fs per targets)' % (dur, len(self.all_desired_targetTypes), dur / len(self.all_desired_targetTypes)))
+
+    """
+    load the pre-computed supervision signals
+    """
+    def load_supervision_map(self, target):
+        assert self._fetchSupervisionMap(target), '[House] Error! supervision signal for target <{}> not cached! please call [cache_supervision(deg_dirs, actions)] first!'
+
+    """
+    get the optimal action
+    """
+    def get_supervision(self, gx, gy, deg_id):
+        return self._getSupervise(gx, gy, deg_id)
 
     """
     get the objects available for target

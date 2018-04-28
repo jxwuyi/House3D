@@ -100,6 +100,7 @@ PYBIND11_MODULE(objrender, m) {
     .def("_genValidCoors", &BaseHouse::_genValidCoors)
     .def("_genExpandedRegionMask", &BaseHouse::_genExpandedRegionMask)
     .def("_genExpandedRegionMaskFromTargetMap", &BaseHouse::_genExpandedRegionMaskFromTargetMap)
+    .def("_genSupervisionMap", &BaseHouse::_genSupervisionMap)
     // Target Dist Map Setter Functions
     .def("_clearCurrentDistMap", &BaseHouse::_clearCurrentDistMap)
     .def("_setCurrentDistMap", &BaseHouse::_setCurrentDistMap)
@@ -108,6 +109,7 @@ PYBIND11_MODULE(objrender, m) {
     .def("_getConnCoors", &BaseHouse::_getConnCoors, py::return_value_policy::reference)
     .def("_getValidCoors", &BaseHouse::_getValidCoors, py::return_value_policy::reference)
     .def("_getMaxConnDist", &BaseHouse::_getMaxConnDist)
+    .def("_getSupervise", &BaseHouse::_getSupervise)
     // Location Getter Utility Functions
     .def("_getRegionMask", &BaseHouse::_getRegionMask)
     .def("_fetchValidCoorsSize", &BaseHouse::_fetchValidCoorsSize)
@@ -118,6 +120,7 @@ PYBIND11_MODULE(objrender, m) {
     .def("_getCurrConnectCoorsSize", &BaseHouse::_getCurrConnectCoorsSize)
     .def("_getCurrConnectCoorsSize_Bounded", &BaseHouse::_getCurrConnectCoorsSize_Bounded)
     .def("_getCurrIndexedConnectCoor", &BaseHouse::_getCurrIndexedConnectCoor)
+    .def("_fetchSupervisionMap", &BaseHouse::_fetchSupervisionMap)
     // Utility Functions
     .def("_inside", &BaseHouse::_inside)
     .def("_canMove", &BaseHouse::_canMove)

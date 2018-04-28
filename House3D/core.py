@@ -178,6 +178,12 @@ class Environment():
             return self._check_collision_fast(pA, pB, FAST_COLLISION_CHECK_SAMPLES)
         return self.house.collision_check_slow((pA[0], pA[2]), (pB[0], pB[2]), num_samples)
 
+    def get_front_dir(self):
+        return (self.cam.front.x, self.cam.front.z)
+
+    def get_right_dir(self):
+        return (self.cam.right.x, self.cam.right.z)
+
     def move_forward(self, dist_fwd, dist_hor=0):
         """
         Move with `fwd` distance to the front and `hor` distance to the right.
@@ -234,6 +240,13 @@ class Environment():
         virtual function, no need to switch house here
         """
         pass
+
+    def cache_shortest_distance(self):
+        self.house.cache_all_target()
+        self.house.init_graph()
+
+    def cache_supervision(self, deg_dir, actions):
+        self.house.cache_supervision(deg_dir, actions)
 
     @property
     def num_house(self):
@@ -373,6 +386,10 @@ class MultiHouseEnv(Environment):
         for house in self.all_houses:
             house.cache_all_target()
             house.init_graph()
+
+    def cache_supervision(self, deg_dir, actions):
+        for house in self.all_houses:
+            house.cache_supervision(deg_dir, actions)
 
     @property
     def info(self):

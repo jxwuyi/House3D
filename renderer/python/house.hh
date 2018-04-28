@@ -45,6 +45,8 @@ class BaseHouse {
     vector<int> maxConnDistLis;
     py::array_t<int>* cur_connMap;
     vector<tuple<int,int> >* cur_connCoors;
+    vector<py::array_t<unsigned char> > supMapLis;
+    py::array_t<unsigned char>* cur_supMap;
     int cur_maxConnDist;
     vector<vector<tuple<int,int> > > regValidCoorsLis;
     vector<tuple<int,int,int,int> > regInputBoxLis;
@@ -79,7 +81,7 @@ class BaseHouse {
     bool _check_grid_occupy(double cx, double cy, int gx, int gy);
 
 public:
-    BaseHouse(int resolution): n(resolution), cur_connMap(nullptr), cur_connCoors(nullptr) {}
+    BaseHouse(int resolution): n(resolution), cur_connMap(nullptr), cur_connCoors(nullptr), cur_supMap(nullptr) {}
     void _setHouseBox(double _lo, double _hi, double _rad) {
         L_lo = _lo; L_hi = _hi; rad = _rad;
         L_det = _hi - _lo; grid_det = L_det / n;
@@ -123,6 +125,11 @@ public:
     //             this will also cache valid coors in <regValidCoorsLis> and <regionInd>
     bool _genExpandedRegionMaskFromTargetMap(const string& tag);
 
+    // compute supervision map for all the cached targets
+    //    --> if already computed, false will be returned
+    bool _genSupervisionMap(const vector<tuple<double,double,double,double>>& angle_dirs,
+                            const vector<tuple<double,double,int>>& actions);
+
     /////////////////////////////////////////
     // Target Dist Map Setter Functions
     /////////////////////////////////////////
@@ -145,6 +152,8 @@ public:
         if (iter == regionInd.end()) return nullptr;
         return &regValidCoorsLis[iter->second];
     }
+    // get supervision signal
+    int _getSupervise(int gx, int gy, int deg);
 
     //////////////////////////////////////
     // location getter utility functions
@@ -160,6 +169,7 @@ public:
     int _getCurrConnectCoorsSize();
     int _getCurrConnectCoorsSize_Bounded(int bound);
     tuple<int,int> _getCurrIndexedConnectCoor(int k);
+    bool _fetchSupervisionMap(const string& tag);
 
     //////////////////////////////////////////////////
     // range check and utility functions

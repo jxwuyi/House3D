@@ -23,7 +23,8 @@ roomTargetFile = CFG['roomTargetFile']
 objectTargetFile = CFG['objectTargetFile'] if 'objectTargetFile' in CFG else None
 modelObjectMapFile = CFG['modelObjectMap'] if 'modelObjectMap' in CFG else None
 
-flag_parallel_init = (sys.platform != 'darwin')
+# only works for python 3.5
+flag_parallel_init = (sys.version_info[1] == 5)
 
 flag_object_success_range = 0.5
 
@@ -91,15 +92,16 @@ def create_house_from_index(k, genRoomTypeMap=False, cacheAllTarget=False):
 if __name__ == '__main__':
     print('Start Generating House ....')
     ts = time.time()
-    num_houses = 10
+    num_houses = 5
     all_houses = create_house_from_index(-num_houses, cacheAllTarget=True)
     from House3D import objrender
     api = objrender.RenderAPI(w=400, h=300, device=0)
     env = MultiHouseEnv(api, all_houses, config=CFG, parallel_init=flag_parallel_init)
     #env = Environment(api, all_houses[0], config=CFG)
-    task = RoomNavTask(env, hardness=0.6, reward_type='new', max_birthplace_steps=30,
+    task = RoomNavTask(env, hardness=0.6, reward_type='new', max_birthplace_steps=20,
                        discrete_action=True, include_object_target=True,
-                       reward_silence=5, birthplace_curriculum_schedule=(2, 2, 2))
+                       discrete_angle=True, supervision_signal=True)
+                       #reward_silence=5, birthplace_curriculum_schedule=(2, 2, 2))
     dur = time.time() - ts
     print('  --> Time Elapsed = %.6f (s)' % dur)
 
@@ -107,11 +109,17 @@ if __name__ == '__main__':
     def print_help():
         print('Usage: ')
         print('> Actions: (Simplified Version) Total 10 Actions')
-        print('  --> j, k, l, i, u, o: left, back, right, forward, left-forward, right-forward')
+        print('  --> j, k, l, i, u, o, w: left, back, right, forward, left-forward, right-forward')
         print('  --> a, s, d, f: left-rotate, small left-rot, small right-rot, right-rotate')
         print('> press r: reset')
         print('> press h: show helper again')
         print('> press q: exit')
+
+    def get_supervision_name(act):
+        if act < 0: return 'N/A'
+        discrete_action_names = ['Forward', 'Right', 'Left', 'Right-Fwd', 'Left-Fwd', 'Right-Rotate', 'Left-Rotate',
+                                 'Backward', 'Small-Forward', 'Small-Right', 'Small-Left', 'Small-Right-Rot', 'Small-Left-Rot', 'Stay']
+        return discrete_action_names[act]
 
     import cv2
     print_help()
@@ -124,6 +132,7 @@ if __name__ == '__main__':
         target = task.info['target_room']
         while True:
             print('Step#%d, Instruction = <go to %s>' % (step, target))
+            print('  ->>>> supervision = {}'.format(get_supervision_name(task.info['supervision'])))
             mat = task.debug_show()
             cv2.imshow("aaa", mat)
             while True:
