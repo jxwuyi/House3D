@@ -395,7 +395,7 @@ class RoomNavTask(gym.Env):
         seg_obs = self._fetch_cached_segmentation()
         object_color_list = self.room_target_object[self.house.targetRoomTp]
         for c in object_color_list:
-            self._cached_mask[np.all(seg_obs==c, axis=2),:]=1
+            self._cached_mask[np.all(seg_obs==c, axis=2),:]=256   # NOTE: when processed by NN, image will be scaled
         return self._cached_mask
 
     def _is_success(self, raw_dist, grid):
@@ -549,7 +549,7 @@ class RoomNavTask(gym.Env):
         if self.supervision_signal:
             sup_act = self.house.get_supervision(gx, gy, self._yaw_ind)
             if sup_act >= 0: sup_act = self._allowed_sup_action_idx[sup_act]
-            ret['supervision'] =  sup_act
+            ret['supervision'] = sup_act
         return ret
 
     def get_current_target(self):
