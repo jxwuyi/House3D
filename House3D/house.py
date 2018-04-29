@@ -270,8 +270,17 @@ class House(_BaseHouse):
             assert not DebugInfoOn, 'Please set DebugInfoOn=False when loading data from cached file!'
             print('Loading Obstacle Map and Movability Map From Cache File ...')
             ts = time.time()
-            with open(CachedFile, 'rb') as f:
-                t_obsMap, t_moveMap = pickle.load(f)
+            _flag_successful = False
+            for _lp in range(6):
+                try:
+                    with open(CachedFile, 'rb') as f:
+                        t_obsMap, t_moveMap = pickle.load(f)
+                except Exception e:
+                    time.sleep(10)
+                    continue
+                _flag_successful = True
+                break
+            assert _flag_successful, '[House] Cache File Not Found (6 failed trials)! file = {}'.format(CachedFile)
             self._setObsMap(t_obsMap)
             self._setMoveMap(t_moveMap)
             del t_obsMap
