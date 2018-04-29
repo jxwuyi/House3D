@@ -275,7 +275,7 @@ class House(_BaseHouse):
                 try:
                     with open(CachedFile, 'rb') as f:
                         t_obsMap, t_moveMap = pickle.load(f)
-                except Exception e:
+                except Exception as e:
                     time.sleep(10)
                     continue
                 _flag_successful = True
