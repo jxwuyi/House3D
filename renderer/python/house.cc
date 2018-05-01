@@ -113,9 +113,9 @@ int BaseHouse::_getConnectCoorsSize_Bounded(const string& tag, int bound){
     }
     return hi;
 }
-tuple<int,int> BaseHouse::_get_ConnectCoorSize_Range(const string& tag, int lo, int hi) {
-    return make_tuple(_get_ConnectCoorSize_Bounded(tag, lo - 1),
-                      _get_ConnectCoorSize_Bounded(tag, hi));
+tuple<int,int> BaseHouse::_getConnectCoorsSize_Range(const string& tag, int lo, int hi) {
+    return make_tuple(_getConnectCoorsSize_Bounded(tag, lo - 1),
+                      _getConnectCoorsSize_Bounded(tag, hi));
 }
 tuple<int,int> BaseHouse::_getIndexedConnectCoor(const string& tag, int k){
     auto iter = targetInd.find(tag);
