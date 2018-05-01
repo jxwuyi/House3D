@@ -106,6 +106,7 @@ PYBIND11_MODULE(objrender, m) {
     .def("_setCurrentDistMap", &BaseHouse::_setCurrentDistMap)
     // Getter Functions
     .def("_getConnMap", &BaseHouse::_getConnMap, py::return_value_policy::reference)
+    .def("_getConnDistForTarget", &BaseHouse::_getConnDistForTarget)
     .def("_getConnCoors", &BaseHouse::_getConnCoors, py::return_value_policy::reference)
     .def("_getValidCoors", &BaseHouse::_getValidCoors, py::return_value_policy::reference)
     .def("_getMaxConnDist", &BaseHouse::_getMaxConnDist)
@@ -116,6 +117,7 @@ PYBIND11_MODULE(objrender, m) {
     .def("_getCachedIndexedValidCoor", &BaseHouse::_getCachedIndexedValidCoor)
     .def("_getConnectCoorsSize", &BaseHouse::_getConnectCoorsSize)
     .def("_getConnectCoorsSize_Bounded", &BaseHouse::_getConnectCoorsSize_Bounded)
+    .def("_getConnectCoorsSize_Range", &BaseHouse::_getConnectCoorsSize_Range)
     .def("_getIndexedConnectCoor", &BaseHouse::_getIndexedConnectCoor)
     .def("_getCurrConnectCoorsSize", &BaseHouse::_getCurrConnectCoorsSize)
     .def("_getCurrConnectCoorsSize_Bounded", &BaseHouse::_getCurrConnectCoorsSize_Bounded)
@@ -132,6 +134,7 @@ PYBIND11_MODULE(objrender, m) {
     .def("_to_coor", &BaseHouse::_to_coor)
     // Connectivity Graph Related
     .def("_gen_target_graph", &BaseHouse::_gen_target_graph)
+    .def("_get_target_graph", &BaseHouse::_get_target_graph)
     .def("_compute_target_plan", &BaseHouse::_compute_target_plan)
     .def("_get_target_plan_dist", &BaseHouse::_get_target_plan_dist)
     .def("_get_target_mask_grid", &BaseHouse::_get_target_mask_grid)

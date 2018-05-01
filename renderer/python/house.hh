@@ -64,6 +64,7 @@ class BaseHouse {
     vector<vector<int> > targetDist;  // pairwise distance over targets
   public:
     int _gen_target_graph(int _n_obj);  // return the total number of targets
+    vector<vector<int> > _get_target_graph(); // return a copy of the internal target graph
     vector<string> _compute_target_plan(double cx, double cy, const string& target);
     vector<double> _get_target_plan_dist(double cx, double cy, const vector<string>& plan);
     int _get_target_mask_grid(int gx, int gy, bool only_object=false);
@@ -142,6 +143,7 @@ public:
     ///////////////////////////
     // get connMap
     py::array_t<int>* _getConnMap() {return cur_connMap;}
+    int _getConnDistForTarget(const string& tag, int gx, int gy);
     // get connectedCoors
     vector<tuple<int,int> >* _getConnCoors() {return cur_connCoors;}
     // get maxConnDist
@@ -165,6 +167,7 @@ public:
     tuple<int,int> _getCachedIndexedValidCoor(int k);
     int _getConnectCoorsSize(const string& tag);
     int _getConnectCoorsSize_Bounded(const string& tag, int bound);
+    tuple<int,int> _get_ConnectCoorSize_Range(const string& tag, int lo, int hi);
     tuple<int,int> _getIndexedConnectCoor(const string& tag, int k);
     int _getCurrConnectCoorsSize();
     int _getCurrConnectCoorsSize_Bounded(int bound);

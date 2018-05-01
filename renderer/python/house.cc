@@ -101,7 +101,7 @@ int BaseHouse::_getConnectCoorsSize(const string& tag){
 }
 int BaseHouse::_getConnectCoorsSize_Bounded(const string& tag, int bound){
     auto iter = targetInd.find(tag);
-    if (iter == targetInd.end()) return 0;
+    if (iter == targetInd.end() || bound < 0) return 0;
     auto& coors = connCoorsLis[iter->second];
     auto& connMap = connMapLis[iter->second];
     int lo = -1, hi = coors.size(), mid;
@@ -112,6 +112,10 @@ int BaseHouse::_getConnectCoorsSize_Bounded(const string& tag, int bound){
         if (*connMap.data(x, y) <= bound) lo = mid; else hi = mid;
     }
     return hi;
+}
+tuple<int,int> BaseHouse::_get_ConnectCoorSize_Range(const string& tag, int lo, int hi) {
+    return make_tuple(_get_ConnectCoorSize_Bounded(tag, lo - 1),
+                      _get_ConnectCoorSize_Bounded(tag, hi));
 }
 tuple<int,int> BaseHouse::_getIndexedConnectCoor(const string& tag, int k){
     auto iter = targetInd.find(tag);
@@ -143,6 +147,13 @@ bool BaseHouse::_fetchSupervisionMap(const string& tag) {
     if (iter == targetInd.end() || iter->second >= (int)supMapLis.size()) return false;
     cur_supMap = &supMapLis[iter->second];
     return true;
+}
+
+// get entry of connMap under target <tag>
+int BaseHouse::_getConnDistForTarget(const string& tag, int gx, int gy) {
+    auto iter = targetInd.find(tag);
+    if (iter == targetInd.end() || !_inside(gx, gy)) return -1;
+    return *connMapLis[iter->second].data(gx, gy);
 }
 
 // get supervision for current grid (gx, gy, deg)
@@ -275,6 +286,11 @@ int BaseHouse::_gen_target_graph(int _n_obj) {
 
   // return the total number of targets
   return this->n_target;
+}
+
+// get the target distance graph (a copy)
+vector<vector<int> > BaseHouse::_get_target_graph() {
+    return targetDist;
 }
 
 // compute the optimal object level plan to the target

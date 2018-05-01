@@ -331,6 +331,9 @@ class House(_BaseHouse):
     def connMap(self):
         return self._getConnMap()
 
+    def targetDist(self, target, gx, gy):
+        return self._getConnDistForTarget(target, gx, gy)
+
     @property
     def inroomDist(self):
         return self._getInroomDist()
@@ -447,19 +450,45 @@ class House(_BaseHouse):
         return _x1, _y1, _x2, _y2
 
     """
-    returns a random location of a given room type
+    returns a random location of a given target type
     """
-    def getRandomLocation(self, roomTp, return_grid=False):
-        roomTp = roomTp.lower()
-        assert roomTp in self.all_desired_roomTypes, '[House] room type <{}> not supported!'.format(roomTp)
-        if self._getConnectCoorsSize(roomTp) == 0:
-            rooms = self._getRooms(roomTp)
-            room_boxes = [self._getRoomCoorBox(room) for room in rooms]
-            self._genShortestDistMap(room_boxes, roomTp)
+    def getRandomLocation(self, target, return_grid=False):
+        target = target.lower()
+        assert target in self.all_desired_targetTypes, '[House] target type <{}> not supported!'.format(target)
+        if self._getConnectCoorsSize(target) == 0:
+            if target in self.all_desired_roomTypes:
+                rooms = self._getRooms(target)
+                room_boxes = [self._getRoomCoorBox(room) for room in rooms]
+                self._genShortestDistMap(room_boxes, target)
+            else:
+                assert False, '[House] shortest distance map for target type <{}> not yet cached!'.format(target)
 
-        sz = self._getConnectCoorsSize_Bounded(roomTp, 0)  # only consider those locations inside the room
+        sz = self._getConnectCoorsSize_Bounded(target, 0)  # only consider those locations inside the room
         if sz == 0: return None
-        gx, gy = self._getIndexedConnectCoor(roomTp, np.random.randint(sz))
+        gx, gy = self._getIndexedConnectCoor(target, np.random.randint(sz))
+        if return_grid: return gx, gy
+        return self.to_coor(gx, gy, True)
+
+    """
+    returns a random location of a given target type within a given range
+    """
+    def getRandomLocationFromRange(self, target, range, return_grid=False):
+        if isinstance(range, int): range = (0, range)
+        assert isinstance(range, tuple) and (len(tuple) == 2) and (range[0] <= range[1]) and (range[0] >= 0), \
+            '[House.getRandomLocationFromRange] range must be a tuple of two ints, (lo, hi), and 0 <= lo <= hi!'
+        target = target.lower()
+        assert target in self.all_desired_targetTypes, '[House] target type <{}> not supported!'.format(target)
+        if self._getConnectCoorsSize(target) == 0:
+            assert (target in self.all_desired_roomTypes), \
+                '[House] shortest distance map for target type <{}> not yet cached!'.format(target)
+            rooms = self._getRooms(target)
+            room_boxes = [self._getRoomCoorBox(room) for room in rooms]
+            self._genShortestDistMap(room_boxes, target)
+
+        lo, hi = self._getConnectCoorsSize_Range(target, range[0], range[1])
+        sz = hi - lo
+        if sz <= 0: return None  # no allowed location
+        gx, gy = self._getIndexedConnectCoor(target, lo + np.random.randint(sz))
         if return_grid: return gx, gy
         return self.to_coor(gx, gy, True)
 
@@ -471,12 +500,12 @@ class House(_BaseHouse):
             self._genExpandedRegionMask(reg_tag)
         else:
             reg_tag = room_node if isinstance(room_node, str) else room_node['id']
-        return self._getRegionMask(reg_tag)
+        return self._local_mask_to_global_mask(self._getRegionMask(reg_tag)[0])
 
     def getRegionMaskForTarget(self, targetTp, is_cached=False):
         if not is_cached:
             self._genExpandedRegionMaskFromTargetMap(targetTp)
-        return self._getRegionMask(targetTp)
+        return self._local_mask_to_global_mask(self._getRegionMask(targetTp)[0])
 
     def getRandomLocationForRoom(self, room_node, return_grid=False, is_cached=False):
         if not is_cached:
@@ -524,6 +553,12 @@ class House(_BaseHouse):
     """
     def getAllowedGridDist(self, max_allowed_step_dist):
         return int(np.floor(max_allowed_step_dist / self.grid_det + 1e-10))
+
+    """
+    return the number of optimal steps required to reach the goal
+    """
+    def getOptSteps(self, max_allowed_grid_dist, stepsize = 0.5):
+        return int(np.ceil(max_allowed_grid_dist * self.grid_det / stepsize - 1e-10))
 
     """
     cache the shortest distance to all the possible room types
@@ -776,9 +811,13 @@ class House(_BaseHouse):
         self._flag_graph_init = True
         return True
 
-    def get_global_mask_feature(self, cx, cy):
-        local_msk = self._get_target_mask(cx, cy, False)
-        ret_msk = np.zeros(len(ALLOWED_TARGET_ROOM_TYPES)+len(ALLOWED_OBJECT_TARGET_TYPES), dtype=np.uint8)
+    def get_graph(self):
+        if not self._flag_graph_init:
+            self.init_graph()
+        return np.array(self._get_target_graph(), dtype=np.int32)
+
+    def _local_mask_to_global_mask(self, local_msk):
+        ret_msk = np.zeros(len(ALLOWED_TARGET_ROOM_TYPES) + len(ALLOWED_OBJECT_TARGET_TYPES), dtype=np.uint8)
         n_room = len(self.all_desired_roomTypes)
         for i, t in enumerate(self.all_desired_roomTypes):
             if (local_msk & (1 << i)) > 0: ret_msk[ALLOWED_PREDICTION_ROOM_TYPES[t]] = 1
@@ -786,6 +825,10 @@ class House(_BaseHouse):
         for i, t in enumerate(self.all_desired_targetObj):
             if (local_msk & (1 << i)) > 0: ret_msk[ALLOWED_OBJECT_TARGET_INDEX[t]] = 1
         return ret_msk
+
+    def get_global_mask_feature(self, cx, cy):
+        local_msk = self._get_target_mask(cx, cy, False)
+        return self._local_mask_to_global_mask(local_msk)
 
     def get_target_mask(self, cx, cy, return_names=True):
         if return_names:
