@@ -170,7 +170,7 @@ public:
     tuple<int,int> _getCachedIndexedValidCoor(int k);
     int _getConnectCoorsSize(const string& tag);
     int _getConnectCoorsSize_Bounded(const string& tag, int bound);
-    tuple<int,int> _get_ConnectCoorSize_Range(const string& tag, int lo, int hi);
+    tuple<int,int> _getConnectCoorsSize_Range(const string& tag, int lo, int hi);
     tuple<int,int> _getIndexedConnectCoor(const string& tag, int k);
     int _getCurrConnectCoorsSize();
     int _getCurrConnectCoorsSize_Bounded(int bound);

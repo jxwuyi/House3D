@@ -206,6 +206,7 @@ class RoomNavTask(gym.Env):
         self.hardness = None
         self.max_birthplace_steps = None
         self.availCoorsSize = None
+        self.availCoorsLower = 0
         self._availCoorsSizeDict = None
         if birthplace_curriculum_schedule is not None:
             if (not hasattr(birthplace_curriculum_schedule, '__len__')) \
@@ -312,9 +313,22 @@ class RoomNavTask(gym.Env):
                     if self.max_birthplace_steps is not None:
                         allowed_dist = min(self.house.getAllowedGridDist(self.max_birthplace_steps * self.move_sensitivity), allowed_dist)
                     self.availCoorsSize = self.house.getConnectedLocationSize(max_allowed_dist=allowed_dist)
+                if target == 'outdoor':
+                    lower_size = self.house.getConnectedLocationSize(max_allowed_dist=0)
+                    if lower_size < allowed_dist:
+                        self.availCoorsLower = lower_size
+                        self.availCoorsSize -= lower_size
+                        self._availCoorsSizeDict[_id][self.house.targetRoomTp] = (lower_size, self.availCoorsSize)
+                        return
+                self.availCoorsLower = 0
                 self._availCoorsSizeDict[_id][self.house.targetRoomTp] = self.availCoorsSize
             else:
-                self.availCoorsSize = self._availCoorsSizeDict[_id][self.house.targetRoomTp]
+                val = self._availCoorsSizeDict[_id][self.house.targetRoomTp]
+                if isinstance(val, tuple):
+                    self.availCoorsLower, self.availCoorsSize = self._availCoorsSizeDict[_id][self.house.targetRoomTp]
+                else:
+                    self.availCoorsSize = self._availCoorsSizeDict[_id][self.house.targetRoomTp]
+                    self.availCoorsLower = 0
 
     @property
     def house(self):
@@ -351,7 +365,7 @@ class RoomNavTask(gym.Env):
 
         # general birth place
         if birthplace is None:
-            x, y = self.house.getIndexedConnectedLocation(np.random.randint(self.availCoorsSize))
+            x, y = self.house.getIndexedConnectedLocation(np.random.randint(self.availCoorsSize) + self.availCoorsLower)
         else:
             x, y = birthplace
         yaw = None
@@ -597,8 +611,16 @@ class RoomNavTask(gym.Env):
             if max_birthplace_steps is not None:
                 allowed_dist = min(self.house.getAllowedGridDist(max_birthplace_steps * self.move_sensitivity), allowed_dist)
             self.availCoorsSize = self.house.getConnectedLocationSize(max_allowed_dist=allowed_dist)
+        self.availCoorsSizeLower = 0
         n_house = self.env.num_house
         self._availCoorsSizeDict = [dict() for _ in range(n_house)]
+        if self.house.targetRoomTp == 'outdoor':
+            lower_size = self.house.getConnectedLocationSize(max_allowed_dist=0)
+            if lower_size < self.availCoorsSize:
+                self.availCoorsLower = lower_size
+                self.availCoorsSize -= lower_size
+                self._availCoorsSizeDict[self.house._id][self.house.targetRoomTp] = (self.availCoorsLower, self.availCoorsSize)
+                return
         self._availCoorsSizeDict[self.house._id][self.house.targetRoomTp] = self.availCoorsSize
 
     """
