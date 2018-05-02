@@ -584,6 +584,13 @@ class RoomNavTask(gym.Env):
         return self.house.get_target_mask(cx, cy)
 
     """
+    [Sandbox/Graph] return auxiliary mask in global feature representation
+    """
+    def get_feature_mask(self):
+        cx, cy = self.env.info['loc']
+        return self.house.get_global_mask_feature(cx, cy)
+
+    """
     [Sandbox/Graph] return optimal plan info
     """
     def get_optimal_plan(self):
