@@ -602,6 +602,29 @@ bool BaseHouse::_genExpandedRegionMaskFromTargetMap(const string& tag) {
     return true;
 }
 
+// generate expanded mask for region with room mask <mask>
+tuple<int,int> BaseHouse::_genExpandedRegionMaskForRoomMask(int mask, int n_room) {
+    int sz = n + 1;
+    int room_bits = (1 << n_room) - 1;
+    int in_mask = 0, out_mask = 0;
+    bool flag_found_desired_mask = false;
+    for (int x=0;x<sz;++x)
+        for (int y=0;y<sz;++y)
+            if ((*moveMap.data(x,y) > 0) && (*targetMask.data(x,y) & room_bits) == mask) {
+                flag_found_desired_mask = true;
+                in_mask |= *targetMask.data(x,y);
+                for (int d=0;d<4;++d) {
+                    int tx = x + DIRS[d][0], ty = y + DIRS[d][1];
+                    if (_inside(tx, ty) && *moveMap.data(tx,ty) > 0) {
+                        out_mask |= *targetMask.data(tx, ty)
+                    }
+                }
+            }
+    if (!flag_found_desired_mask)
+        return make_tuple(int(-1), int(-1));
+    return make_tuple(in_mask, out_mask);
+}
+
 // generate movable map
 void BaseHouse::_genMovableMap(const vector<REGION_TP>& regions) {
     int x1,y1,x2,y2;

@@ -100,6 +100,7 @@ PYBIND11_MODULE(objrender, m) {
     .def("_genValidCoors", &BaseHouse::_genValidCoors)
     .def("_genExpandedRegionMask", &BaseHouse::_genExpandedRegionMask)
     .def("_genExpandedRegionMaskFromTargetMap", &BaseHouse::_genExpandedRegionMaskFromTargetMap)
+    .def("_genExpandedRegionMaskForRoomMask", &BaseHouse::_genExpandedRegionMaskForRoomMask)
     .def("_genSupervisionMap", &BaseHouse::_genSupervisionMap)
     // Target Dist Map Setter Functions
     .def("_clearCurrentDistMap", &BaseHouse::_clearCurrentDistMap)

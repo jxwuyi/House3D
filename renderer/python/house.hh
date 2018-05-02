@@ -125,6 +125,9 @@ public:
     //  ---> NOTE: this only remains the largest component from <tag> region [TODO: decompose into several components?]
     //             this will also cache valid coors in <regValidCoorsLis> and <regionInd>
     bool _genExpandedRegionMaskFromTargetMap(const string& tag);
+    // compute the target mask and connected mask for room mask <mask>
+    //   ---> specially designed for computing masks for region <indoor>
+    tuple<int,int> _genExpandedRegionMaskForRoomMask(int mask, int n_room);
 
     // compute supervision map for all the cached targets
     //    --> if already computed, false will be returned

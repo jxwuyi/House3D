@@ -197,6 +197,7 @@ class RoomNavTask(gym.Env):
 
         self.last_obs = None
         self.last_info = None
+        self.cached_obs = None
         self._cached_seg = None
         self._cached_mask = None if not target_mask_signal else np.zeros((self.resolution[1],self.resolution[0],1), dtype=np.uint8)
         self._object_cnt = 0
@@ -323,7 +324,7 @@ class RoomNavTask(gym.Env):
     gym api: reset function
     when target is not None, we will set the target room type to navigate to
     """
-    def reset(self, target=None):
+    def reset(self, target=None, reset_house=True, birthplace=None):
         # increase episode counter
         self.total_episode_cnt += 1
         if (self.curriculum_schedule is not None) \
@@ -340,15 +341,19 @@ class RoomNavTask(gym.Env):
         self._prev_object_see_rate = 0.0
 
         # reset house
-        self.env.reset_house()
-        self.house.targetRoomTp = None  # [NOTE] IMPORTANT! clear this!!!!!
+        if reset_house:
+            self.env.reset_house()
+            self.house.targetRoomTp = None  # [NOTE] IMPORTANT! clear this!!!!!
 
         # reset target room
         self.reset_target(target=target)  # randomly reset
         self.collision_flag = False
 
         # general birth place
-        x, y = self.house.getIndexedConnectedLocation(np.random.randint(self.availCoorsSize))
+        if birthplace is None:
+            x, y = self.house.getIndexedConnectedLocation(np.random.randint(self.availCoorsSize))
+        else:
+            x, y = birthplace
         yaw = None
         if self.discrete_angle is not None:
             self._yaw_ind = np.random.randint(self.discrete_angle)
@@ -369,6 +374,7 @@ class RoomNavTask(gym.Env):
         if self.target_mask_signal:
             ret_obs = np.concatenate([ret_obs, self._gen_target_mask()], axis=-1)
         self.last_info = self.info
+        self.cached_obs = ret_obs
         return ret_obs
 
     def _apply_action(self, action):
@@ -527,6 +533,7 @@ class RoomNavTask(gym.Env):
                     self._prev_object_see_rate = curr_obj_see_rate
                     reward += object_reward
         self.last_info = cur_info
+        self.cached_obs = obs
         return obs, reward, done, cur_info
 
     @property

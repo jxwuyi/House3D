@@ -507,6 +507,10 @@ class House(_BaseHouse):
             self._genExpandedRegionMaskFromTargetMap(targetTp)
         return self._local_mask_to_global_mask(self._getRegionMask(targetTp)[0])
 
+    def getRegionMaskForRoomMask(self, mask):
+        n_room = len(self.all_desired_roomTypes)
+        return self._local_mask_to_global_mask(self._genExpandedRegionMaskForRoomMask(mask, n_room))
+
     def getRandomLocationForRoom(self, room_node, return_grid=False, is_cached=False):
         if not is_cached:
             reg_tag = room_node['id']
