@@ -616,7 +616,7 @@ tuple<int,int> BaseHouse::_genExpandedRegionMaskForRoomMask(int mask, int n_room
                 for (int d=0;d<4;++d) {
                     int tx = x + DIRS[d][0], ty = y + DIRS[d][1];
                     if (_inside(tx, ty) && *moveMap.data(tx,ty) > 0) {
-                        out_mask |= *targetMask.data(tx, ty)
+                        out_mask |= *targetMask.data(tx, ty);
                     }
                 }
             }
