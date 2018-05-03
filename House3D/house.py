@@ -431,6 +431,10 @@ class House(_BaseHouse):
         if not okay_flag:
             print("Error Occured for Target {}! Target Removed from Target List!".format(targetRoomTp))
             self.all_desired_targetTypes.remove(targetRoomTp)  # invalid target remove from list
+            if targetRoomTp in self.all_desired_roomTypes:
+                self.all_desired_roomTypes.remove(targetRoomTp)
+            else:
+                self.all_desired_targetObj.remove(targetRoomTp)
             return False
         # shortest distance map computed successfully
         self._setCurrentDistMap(targetRoomTp)
