@@ -64,7 +64,7 @@ class BaseHouse {
     vector<vector<int> > targetDistGraph;  // pairwise distance over targets
   public:
     int _gen_target_graph(int _n_obj);  // return the total number of targets
-    vector<vector<int> >* _get_target_graph(); // return a copy of the internal target graph
+    vector<vector<int> > _get_target_graph(); // return a copy of the internal target graph
     vector<string> _compute_target_plan(double cx, double cy, const string& target);
     vector<double> _get_target_plan_dist(double cx, double cy, const vector<string>& plan);
     int _get_target_mask_grid(int gx, int gy, bool only_object=false);

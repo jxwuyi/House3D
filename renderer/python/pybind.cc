@@ -135,7 +135,7 @@ PYBIND11_MODULE(objrender, m) {
     .def("_to_coor", &BaseHouse::_to_coor)
     // Connectivity Graph Related
     .def("_gen_target_graph", &BaseHouse::_gen_target_graph)
-    .def("_get_target_graph", &BaseHouse::_get_target_graph, py::return_value_policy::reference)
+    .def("_get_target_graph", &BaseHouse::_get_target_graph)
     .def("_compute_target_plan", &BaseHouse::_compute_target_plan)
     .def("_get_target_plan_dist", &BaseHouse::_get_target_plan_dist)
     .def("_get_target_mask_grid", &BaseHouse::_get_target_mask_grid)
