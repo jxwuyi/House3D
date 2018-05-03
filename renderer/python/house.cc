@@ -289,8 +289,8 @@ int BaseHouse::_gen_target_graph(int _n_obj) {
 }
 
 // get the target distance graph (a copy)
-vector<vector<int> > BaseHouse::_get_target_graph() {
-    return targetDist;
+vector<vector<int> >* BaseHouse::_get_target_graph() {
+    return &targetDist;
 }
 
 // compute the optimal object level plan to the target
