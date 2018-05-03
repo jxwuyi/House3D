@@ -479,7 +479,7 @@ class House(_BaseHouse):
     def getRandomLocationFromRange(self, target, dist_range, return_grid=False):
         if isinstance(dist_range, int): dist_range = (0, dist_range)
         assert isinstance(dist_range, tuple) and (len(dist_range) == 2) and (dist_range[0] <= dist_range[1]) and (dist_range[0] >= 0), \
-            '[House.getRandomLocationFromRange] dist_range must be a tuple of two ints, (lo, hi), and 0 <= lo <= hi!'
+            '[House.getRandomLocationFromRange] dist_range must be a tuple of two ints, (lo, hi), and 0 <= lo <= hi! Received = {}'.format(dist_range)
         target = target.lower()
         assert target in self.all_desired_targetTypes, '[House] target type <{}> not supported!'.format(target)
         if self._getConnectCoorsSize(target) == 0:
