@@ -472,10 +472,10 @@ class House(_BaseHouse):
     """
     returns a random location of a given target type within a given range
     """
-    def getRandomLocationFromRange(self, target, range, return_grid=False):
-        if isinstance(range, int): range = (0, range)
-        assert isinstance(range, tuple) and (len(tuple) == 2) and (range[0] <= range[1]) and (range[0] >= 0), \
-            '[House.getRandomLocationFromRange] range must be a tuple of two ints, (lo, hi), and 0 <= lo <= hi!'
+    def getRandomLocationFromRange(self, target, dist_range, return_grid=False):
+        if isinstance(dist_range, int): dist_range = (0, dist_range)
+        assert isinstance(dist_range, tuple) and (len(dist_range) == 2) and (dist_range[0] <= dist_range[1]) and (dist_range[0] >= 0), \
+            '[House.getRandomLocationFromRange] dist_range must be a tuple of two ints, (lo, hi), and 0 <= lo <= hi!'
         target = target.lower()
         assert target in self.all_desired_targetTypes, '[House] target type <{}> not supported!'.format(target)
         if self._getConnectCoorsSize(target) == 0:
@@ -485,7 +485,7 @@ class House(_BaseHouse):
             room_boxes = [self._getRoomCoorBox(room) for room in rooms]
             self._genShortestDistMap(room_boxes, target)
 
-        lo, hi = self._getConnectCoorsSize_Range(target, range[0], range[1])
+        lo, hi = self._getConnectCoorsSize_Range(target, dist_range[0], dist_range[1])
         sz = hi - lo
         if sz <= 0: return None  # no allowed location
         gx, gy = self._getIndexedConnectCoor(target, lo + np.random.randint(sz))
