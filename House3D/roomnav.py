@@ -301,7 +301,7 @@ class RoomNavTask(gym.Env):
         #else:
         #    assert target in desired_target_list, '[RoomNavTask] desired target <{}> does not exist in the current house!'.format(target)
         if self.house.setTargetRoom(target):  # target room changed!!!
-            self.house.load_supervision_map(target)
+            if self.supervision_signal: self.house.load_supervision_map(target)
             _id = self.house._id
             if self.house.targetRoomTp not in self._availCoorsSizeDict[_id]:
                 if (self.hardness is None) and (self.max_birthplace_steps is None):
