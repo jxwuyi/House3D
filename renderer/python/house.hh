@@ -61,7 +61,7 @@ class BaseHouse {
     // for connectivity
     int n_obj, n_target, n_room;
     py::array_t<int> targetMask;   // the mask of whether this cell belongs to a target
-    vector<vector<int> > targetDist;  // pairwise distance over targets
+    vector<vector<int> > targetDistGraph;  // pairwise distance over targets
   public:
     int _gen_target_graph(int _n_obj);  // return the total number of targets
     vector<vector<int> >* _get_target_graph(); // return a copy of the internal target graph

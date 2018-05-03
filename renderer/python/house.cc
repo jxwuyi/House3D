@@ -262,7 +262,7 @@ int BaseHouse::_gen_target_graph(int _n_obj) {
   }
 
   // build connectivity graph over all targets
-  targetDist.clear();
+  targetDistGraph.clear();
   for(int pt = 0; pt < n_target; ++ pt) {
     vector<int> cur_dist(n_target, -1);   // from a room/object to any other room/objects
     auto& coors = connCoorsLis[pt];
@@ -281,7 +281,7 @@ int BaseHouse::_gen_target_graph(int _n_obj) {
       }
       if (remain_mask == 0) break;  // no target needs to update distance
     }
-    targetDist.push_back(cur_dist);
+    targetDistGraph.push_back(cur_dist);
   }
 
   // return the total number of targets
@@ -290,7 +290,7 @@ int BaseHouse::_gen_target_graph(int _n_obj) {
 
 // get the target distance graph (a copy)
 vector<vector<int> >* BaseHouse::_get_target_graph() {
-    return &targetDist;
+    return &targetDistGraph;
 }
 
 // compute the optimal object level plan to the target
@@ -330,8 +330,8 @@ vector<string> BaseHouse::_compute_target_plan(double cx, double cy, const strin
     ssp_mask ^= 1 << p;
     for (int tmask = ssp_mask; tmask > 0; tmask &= tmask - 1) {
       int j = __builtin_ctz(tmask);
-      if (targetDist[p][j] < 0) continue;
-      int t_dist = targetDist[p][j] + cur_dist[p];
+      if (targetDistGraph[p][j] < 0) continue;
+      int t_dist = targetDistGraph[p][j] + cur_dist[p];
       int t_steps = cur_steps[p] + 1;
       if (cur_dist[j] < 0 || cur_dist[j] > t_dist
           || (cur_dist[j] == t_dist && cur_steps[j] > t_steps)) {
@@ -346,7 +346,7 @@ vector<string> BaseHouse::_compute_target_plan(double cx, double cy, const strin
     if (cur_dist[i] < 0) continue;
     int t_steps = cur_steps[i] + 1;
     for(int j=0;j<n_target;++j) {
-      int t_dist = targetDist[i][j] + cur_dist[i];
+      int t_dist = targetDistGraph[i][j] + cur_dist[i];
       if (cur_dist[j] < 0 || cur_dist[j] > t_dist
          || (cur_dist[j] == t_dist && cur_steps[j] > t_steps)) {
         cur_dist[j] = t_dist;
@@ -385,7 +385,7 @@ vector<double> BaseHouse::_get_target_plan_dist(double cx, double cy, const vect
     if (prev < 0)
       d = *connMapLis[t].data(gx,gy);
     else
-      d = targetDist[prev][t];
+      d = targetDistGraph[prev][t];
     if (d < 0) {
       cerr << "[ERROR] <BaseHouse::_get_target_plan_dist> Target <"<<plan[i]<<"> Not Connected!!!"<<endl;
       return vector<double>();
