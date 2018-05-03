@@ -500,16 +500,19 @@ class House(_BaseHouse):
             self._genExpandedRegionMask(reg_tag)
         else:
             reg_tag = room_node if isinstance(room_node, str) else room_node['id']
-        return self._local_mask_to_global_mask(self._getRegionMask(reg_tag)[0])
+        in_msk, out_msk = self._getRegionMask(reg_tag)
+        return self._local_mask_to_global_mask(in_msk), self._local_mask_to_global_mask(out_msk)
 
     def getRegionMaskForTarget(self, targetTp, is_cached=False):
         if not is_cached:
             self._genExpandedRegionMaskFromTargetMap(targetTp)
-        return self._local_mask_to_global_mask(self._getRegionMask(targetTp)[0])
+        in_msk, out_msk = self._getRegionMask(targetTp)
+        return self._local_mask_to_global_mask(in_msk), self._local_mask_to_global_mask(out_msk)
 
     def getRegionMaskForRoomMask(self, mask):
         n_room = len(self.all_desired_roomTypes)
-        return self._local_mask_to_global_mask(self._genExpandedRegionMaskForRoomMask(mask, n_room))
+        in_msk, out_msk = self._genExpandedRegionMaskForRoomMask(mask, n_room)
+        return self._local_mask_to_global_mask(in_msk), self._local_mask_to_global_mask(out_msk)
 
     def getRandomLocationForRoom(self, room_node, return_grid=False, is_cached=False):
         if not is_cached:
