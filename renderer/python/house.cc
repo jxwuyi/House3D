@@ -551,10 +551,12 @@ bool BaseHouse::_genExpandedRegionMaskFromTargetMap(const string& tag) {
     if (iter == targetInd.end()) return false;
     if (regionInd.count(tag) > 0) return false;
     auto& valid_coors = connCoorsLis[iter->second];
+    auto& connMap = connMapLis[iter->second];
     int sz = n + 1;
     int* idxMap = _get_mem<int>(sz*sz+1, -1);
     for(auto& coor: valid_coors) {
         int x,y; tie(x,y) = coor;
+        if (*connMap.data(x, y) > 0) break;
         idxMap[INDEX(x,y,sz)] = 0;
     }
     vector<vector<tuple<int,int> >> comps;
@@ -562,6 +564,7 @@ bool BaseHouse::_genExpandedRegionMaskFromTargetMap(const string& tag) {
     int best_cp_id = -1;
     for(auto& coor: valid_coors) {
         int x,y; tie(x,y) = coor;
+        if (*connMap.data(x, y) > 0) break;
         if (idxMap[INDEX(x,y,sz)] == 0) { // find connected components
             idxMap[INDEX(x,y,sz)] = 1;
             vector<tuple<int,int> > que;
@@ -615,7 +618,7 @@ tuple<int,int> BaseHouse::_genExpandedRegionMaskForRoomMask(int mask, int n_room
                 in_mask |= *targetMask.data(x,y);
                 for (int d=0;d<4;++d) {
                     int tx = x + DIRS[d][0], ty = y + DIRS[d][1];
-                    if (_inside(tx, ty) && *moveMap.data(tx,ty) > 0) {
+                    if (_inside(tx, ty) && *moveMap.data(tx,ty) > 0 && (*targetMask.data(tx, ty) & room_bits) != mask) {
                         out_mask |= *targetMask.data(tx, ty);
                     }
                 }
