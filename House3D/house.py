@@ -824,6 +824,7 @@ class House(_BaseHouse):
         return np.array(self._get_target_graph(), dtype=np.int32)
 
     def _local_mask_to_global_mask(self, local_msk):
+        if local_msk < 0: return None
         ret_msk = np.zeros(len(ALLOWED_TARGET_ROOM_TYPES) + len(ALLOWED_OBJECT_TARGET_TYPES), dtype=np.uint8)
         n_room = len(self.all_desired_roomTypes)
         for i, t in enumerate(self.all_desired_roomTypes):
