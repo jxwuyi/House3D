@@ -415,7 +415,7 @@ class RoomNavTask(gym.Env):
         seg_obs = self._fetch_cached_segmentation()
         object_color_list = self.room_target_object[self.house.targetRoomTp]
         for c in object_color_list:
-            self._cached_mask[np.all(seg_obs==c, axis=2),:]=256   # NOTE: when processed by NN, image will be scaled
+            self._cached_mask[np.all(seg_obs==c, axis=2),:]=250   # NOTE: when processed by NN, image will be scaled
         return self._cached_mask
 
     def _is_success(self, raw_dist, grid):
