@@ -521,8 +521,8 @@ class RoomNavTask(gym.Env):
                 reward += delta_reward
                 if raw_dist >= orig_raw_dist: reward -= self.timePenalty
             elif self.reward_type == 'speed':
-                movement = np.sqrt((self.last_info['pos'][0]-cur_info['pos'][0])**2
-                                   + (self.last_info['pos'][1]-cur_info['pos'][1])**2)
+                movement = np.sqrt((self.last_info['loc'][0]-cur_info['loc'][0])**2
+                                   + (self.last_info['loc'][1]-cur_info['loc'][1])**2)
                 sign = np.sign(orig_raw_dist - raw_dist)
                 det_dist = movement * sign * speed_reward_coef
                 det_dist = np.clip(det_dist, -indicator_reward, indicator_reward)
@@ -634,7 +634,7 @@ class RoomNavTask(gym.Env):
     recover the state (location) of the agent from the info dictionary
     """
     def set_state(self, info):
-        self.env.reset(x=info['pos'][0], y=info['pos'][1], yaw=info['yaw'])
+        self.env.reset(x=info['loc'][0], y=info['loc'][1], yaw=info['yaw'])
 
     """
     return 2d topdown map
