@@ -563,13 +563,13 @@ class House(_BaseHouse):
     return the number of allowed grids in this house for a particular 3D world step length
     """
     def getAllowedGridDist(self, max_allowed_step_dist):
-        return int(np.floor(max_allowed_step_dist / self.grid_det + 1e-10))
+        return int(np.floor(max_allowed_step_dist / self.grid_det + 1e-10)+1e-10)
 
     """
     return the number of optimal steps required to reach the goal
     """
     def getOptSteps(self, max_allowed_grid_dist, stepsize = 0.5):
-        return int(np.ceil(max_allowed_grid_dist * self.grid_det / stepsize - 1e-10))
+        return int(np.ceil(max_allowed_grid_dist * self.grid_det / stepsize - 1e-10)+1e-10)
 
     """
     cache the shortest distance to all the possible room types
