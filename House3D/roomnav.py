@@ -263,7 +263,9 @@ class RoomNavTask(gym.Env):
         self._prev_object_see_rate = 0
 
         # config success measure
-        assert success_measure in ['stay', 'see']
+        assert success_measure in ['stay', 'see', 'stop']
+        if success_measure == 'stop':
+            assert self.discrete_action, 'success_measure <stop> only supports discrete action'
         self.success_measure = success_measure
         print('[RoomNavTask] >> Success Measure = <{}>'.format(success_measure))
         self.success_stay_cnt = 0
@@ -418,13 +420,15 @@ class RoomNavTask(gym.Env):
             self._cached_mask[np.all(seg_obs==c, axis=2),:]=250   # NOTE: when processed by NN, image will be scaled
         return self._cached_mask
 
-    def _is_success(self, raw_dist, grid):
+    def _is_success(self, raw_dist, grid, act):
         if raw_dist > 0:
             self.success_stay_cnt = 0
             return False
         if self.success_measure == 'stay':
             self.success_stay_cnt += 1
             return self.success_stay_cnt >= success_stay_time_steps
+        if self.success_measure == 'stop':
+            return act == (n_discrete_actions - 1)   # stay action
         # self.success_measure == 'see'
         object_color_list = self.room_target_object[self.house.targetRoomTp]
         flag_see_target_objects = (len(object_color_list) == 0)
@@ -491,12 +495,13 @@ class RoomNavTask(gym.Env):
         raw_scaled_dist = cur_info['scaled_dist']
         dist = raw_scaled_dist * self.dist_scale
         done = False
-        if self._is_success(raw_dist, cur_info['grid']):
+        if self._is_success(raw_dist, cur_info['grid'], action):
             reward += self.successRew
             done = True
         # accumulate episode step
         self.current_episode_step += 1
         if (self.max_steps > 0) and (self.current_episode_step >= self.max_steps): done = True
+        if (self.success_measure == 'stop') and (action == n_discrete_actions - 1): done = True
 
         # reward shaping: distance related reward
         if self.current_episode_step > self.reward_silence:
@@ -528,7 +533,7 @@ class RoomNavTask(gym.Env):
                 det_dist = np.clip(det_dist, -indicator_reward, indicator_reward)
                 reward += det_dist
                 if raw_dist >= orig_raw_dist: reward -= self.timePenalty
-            elif self.reward_type == 'new':
+            elif self.reward_type in 'new':
                 # utilize delta reward but with different parameters
                 delta_raw_dist = orig_raw_dist - raw_dist
                 ratio = self.move_sensitivity / self.house.grid_det
