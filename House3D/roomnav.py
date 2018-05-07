@@ -236,7 +236,9 @@ class RoomNavTask(gym.Env):
                 print('>>> [RoomNav] Error! <birthplace_curriculum_schedule> must be a positive int triple! reset to None!')
                 birthplace_curriculum_schedule = None
         self.curriculum_schedule = birthplace_curriculum_schedule
-        self.reset_hardness(hardness, max_birthplace_steps if birthplace_curriculum_schedule is None else birthplace_curriculum_schedule[0])
+        self.reset_hardness(hardness,
+                            max_birthplace_steps if birthplace_curriculum_schedule is None else birthplace_curriculum_schedule[0],
+                            min_birth_grid_dist)
         if self.curriculum_schedule is not None:
             self.curriculum_schedule = (max_birthplace_steps, birthplace_curriculum_schedule[1], birthplace_curriculum_schedule[2])
         self.discrete_angle = None
@@ -337,8 +339,9 @@ class RoomNavTask(gym.Env):
                     if self.max_birthplace_steps is not None:
                         allowed_dist = min(self.house.getAllowedGridDist(self.max_birthplace_steps * self.move_sensitivity), allowed_dist)
                     self.availCoorsSize = self.house.getConnectedLocationSize(max_allowed_dist=allowed_dist)
-                    if self.min_birth_grid_dist > 0:
-                        self.availCoorsLower = self.house.getConnectedLocationSize(max_allowed_dist=self.min_birth_grid_dist-1)
+                    curr_min_dist = min(self.min_birth_grid_dist, self.house.maxConnDist)   # in case of blocked region
+                    if curr_min_dist > 0:
+                        self.availCoorsLower = self.house.getConnectedLocationSize(max_allowed_dist=curr_min_dist-1)
                         self.availCoorsSize -= self.availCoorsLower
                 self._availCoorsSizeDict[_id][self.house.targetRoomTp] = (self.availCoorsLower, self.availCoorsSize)
             else:
@@ -646,8 +649,9 @@ class RoomNavTask(gym.Env):
             assert allowed_dist >= self.min_birth_grid_dist, \
                 "[RoomNavTask.reset_hardness] invalid parameters!!!! allowed_grid_dist = {}, min_grid_dist = {}".format(allowed_dist, self.min_birth_grid_dist)
             self.availCoorsSize = self.house.getConnectedLocationSize(max_allowed_dist=allowed_dist)
-            if self.min_birth_grid_dist > 0:
-                self.availCoorsLower = self.house.getConnectedLocationSize(max_allowed_dist=self.min_birth_grid_dist - 1)
+            curr_min_dist = min(self.min_birth_grid_dist, self.house.maxConnDist)
+            if curr_min_dist > 0:
+                self.availCoorsLower = self.house.getConnectedLocationSize(max_allowed_dist=curr_min_dist - 1)
                 self.availCoorsSize -= self.availCoorsLower
 
         n_house = self.env.num_house
