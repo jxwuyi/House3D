@@ -51,7 +51,6 @@ def _equal_room_tp(room, target):
             ((target == 'bathroom') and (room == 'toilet')) or \
             ((target == 'bedroom') and (room == 'guest_room'))
 
-
 def _equal_object_tp(obj, target):
     """
     NOTE: Ensure <target> is always from <ALLOWED_OBJECT_TARGET_TYPES>!!!!
@@ -276,7 +275,9 @@ class House(_BaseHouse):
                     with open(CachedFile, 'rb') as f:
                         t_obsMap, t_moveMap = pickle.load(f)
                 except Exception as e:
-                    if _lp < 5: time.sleep(30)
+                    print('[House] Failed to load file = {}, Rep#{}, Err = {}, sleep 60 sec ...'.format(CachedFile, _lp+1, e), file=sys.stderr)
+                    if _lp < 5:
+                        time.sleep(60)
                     continue
                 _flag_successful = True
                 break
