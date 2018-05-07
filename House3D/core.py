@@ -178,11 +178,17 @@ class Environment():
             return self._check_collision_fast(pA, pB, FAST_COLLISION_CHECK_SAMPLES)
         return self.house.collision_check_slow((pA[0], pA[2]), (pB[0], pB[2]), num_samples)
 
-    def get_front_dir(self):
-        return (self.cam.front.x, self.cam.front.z)
+    def get_front_dir(self, numpy=False):
+        if numpy:
+            return np.array([self.cam.front.x, self.cam.front.z], dtype=np.float32)
+        else:
+            return (self.cam.front.x, self.cam.front.z)
 
-    def get_right_dir(self):
-        return (self.cam.right.x, self.cam.right.z)
+    def get_right_dir(self, numpy=False):
+        if numpy:
+            return np.array([self.cam.right.x, self.cam.right.z], dtype=np.float32)
+        else:
+            return (self.cam.right.x, self.cam.right.z)
 
     def move_forward(self, dist_fwd, dist_hor=0):
         """
@@ -256,9 +262,7 @@ class Environment():
     def info(self):
         loc = (self.cam.pos.x, self.cam.pos.z)
         gx,gy = self.house.to_grid(loc[0],loc[1])
-        return dict(house_id=0, loc=loc, yaw=self.cam.yaw, grid=(gx, gy),
-                    front=np.array([self.cam.front.x, self.cam.front.z], dtype=np.float32),
-                    right=np.array([self.cam.right.x, self.cam.right.z], dtype=np.float32))
+        return dict(house_id=0, loc=loc, yaw=self.cam.yaw, grid=(gx, gy))
 
     def show(self, img=None, close=False, renderMapLoc=None, storeImage=None, display=True, renderSegment=False):
         """

@@ -569,6 +569,7 @@ class RoomNavTask(gym.Env):
         gx, gy = ret['grid']
         ret['dist'] = dist = self.house.connMap[gx, gy]
         ret['scaled_dist'] = self.house.getScaledDist(gx, gy)
+        ret['meters'] = dist * self.house.grid_det
         ret['optsteps'] = int(dist / (self.move_sensitivity / self.house.grid_det) + 0.5)
         ret['collision'] = int(self.collision_flag)
         ret['target_room'] = self.house.targetRoomTp
