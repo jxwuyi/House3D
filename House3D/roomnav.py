@@ -38,10 +38,12 @@ speed_reward_coef = 1.0
 success_stay_time_steps = 5
 success_see_target_time_steps = 2   # time steps required for success under the "see" criteria
 
+wrong_stop_penalty = 0 #-2
+
 ######################################
 # reward function parameters for new
 ######################################
-new_time_penalty_reward = 0.1   # penalty for each time step
+new_time_penalty_reward = 0.03   # penalty for each time step
 new_reward_coef = 1.0
 new_reward_bound = 0.5
 new_leave_penalty = 0.5
@@ -519,8 +521,10 @@ class RoomNavTask(gym.Env):
             done = True
         # accumulate episode step
         self.current_episode_step += 1
+        if (self.success_measure == 'stop') and (action == n_discrete_actions - 1):
+            if not done: reward += wrong_stop_penalty
+            done = True
         if (self.max_steps > 0) and (self.current_episode_step >= self.max_steps): done = True
-        if (self.success_measure == 'stop') and (action == n_discrete_actions - 1): done = True
 
         # reward shaping: distance related reward
         if self.current_episode_step > self.reward_silence:
