@@ -41,15 +41,15 @@ success_see_target_time_steps = 2   # time steps required for success under the 
 ######################################
 # reward function parameters for new
 ######################################
-new_time_penalty_reward = 0.03   # penalty for each time step
+new_time_penalty_reward = 0.1   # penalty for each time step
 new_reward_coef = 1.0
 new_reward_bound = 0.5
 new_leave_penalty = 0.5
 new_stay_room_reward = 0.05
 new_success_stay_time_steps = 3
 new_success_reward = 10
-new_pixel_object_reward = 4
-new_pixel_reward_rate = 0.25
+new_pixel_object_reward = 2
+new_pixel_reward_rate = 0.10
 #####################################
 
 
@@ -61,9 +61,9 @@ default_move_sensitivity = 0.5  # 1.0   # maximum movement per time step
 # discrete action space actions, totally <13> actions
 # Fwd, L, R, LF, RF, Lrot, Rrot, Bck, s-Fwd, s-L, s-R, s-Lrot, s-Rrot, Stay
 # NOTE: at most 8 actions!!!!
-# NOTE: allowed_actions_for_supversion[0] must be 0!!!!!!
-allowed_actions_for_supversion = [0, 8, 3, 4, 5, 6, 11, 12]  # Fwd, LF, RF, Lrot, Rrot, s-Fwd, s-Lrot, s-Rrot
-#allowed_actions_for_supversion = [0, 1, 2, 5, 6, 8, 11, 12]  # Fwd, L, R, Lrot, Rrot, s-Fwd, s-Lrot, s-Rrot
+# NOTE: allowed_actions_for_supervision[0] must be 0!!!!!!
+allowed_actions_for_supervision = [0, 8, 3, 4, 5, 6, 11, 12]  # Fwd, LF, RF, Lrot, Rrot, s-Fwd, s-Lrot, s-Rrot
+#allowed_actions_for_supervision = [0, 1, 2, 5, 6, 8, 11, 12]  # Fwd, L, R, Lrot, Rrot, s-Fwd, s-Lrot, s-Rrot
 discrete_angle_delta_value = [0, 0, 0, 0, 0, 2, -2, 0, 0, 0, 0, 1, -1, 0]
 discrete_actions=[(1.,0.,0.), (0.,1.,0.), (0.,-1.,0.), (0.4,0.4,0.), (0.4,-0.4,0.),
                   (0.,0.,1.), (0.,0.,-1.),
@@ -226,7 +226,7 @@ class RoomNavTask(gym.Env):
         self.supervision_signal = supervision_signal
         if supervision_signal:
             assert (discrete_angle and discrete_action), 'When <supervision_signal>, <discrete_angle> AND <discrete_action> must be True!'
-            assert (len(allowed_actions_for_supversion) <= 8), 'Only support <allowed_actions_for_supversion> containing at most 8 actions!'
+            assert (len(allowed_actions_for_supervision) <= 8), 'Only support <allowed_actions_for_supervision> containing at most 8 actions!'
             # assume shortest paths have been cached
             self._angle_dir = []
             _t_info = self.env.info
@@ -237,7 +237,7 @@ class RoomNavTask(gym.Env):
                 _frt = self.env.get_front_dir()
                 _rght = self.env.get_right_dir()
                 self._angle_dir.append((_frt[0], _frt[1], _rght[0], _rght[1]))
-            self._allowed_sup_action_idx = allowed_actions_for_supversion
+            self._allowed_sup_action_idx = allowed_actions_for_supervision
             self._allowed_sup_actions = []
             for a in self._allowed_sup_action_idx:
                 dx,dy,dd = discrete_actions[a]
@@ -569,6 +569,7 @@ class RoomNavTask(gym.Env):
         gx, gy = ret['grid']
         ret['dist'] = dist = self.house.connMap[gx, gy]
         ret['scaled_dist'] = self.house.getScaledDist(gx, gy)
+        ret['meters'] = dist * self.house.grid_det
         ret['optsteps'] = int(dist / (self.move_sensitivity / self.house.grid_det) + 0.5)
         ret['collision'] = int(self.collision_flag)
         ret['target_room'] = self.house.targetRoomTp

@@ -26,7 +26,7 @@ ALLOWED_TARGET_ROOM_TYPES = ['outdoor', 'kitchen', 'dining_room', 'living_room',
 
 ALLOWED_OBJECT_TARGET_TYPES = ['kitchen_cabinet','sofa','chair','toilet','table', 'sink','wardrobe_cabinet','bed',
                                'shelving','desk','television','household_appliance','dresser','vehicle','pool']
-                               #'table_and_chair']
+                               #'table_and_chair', 'dressing_table', 'hanging_kitchen_cabinet']
 
 
 #ALLOWED_OBJECT_TARGET_TYPES = ['shower', 'sofa', 'toilet', 'bed', 'television',
@@ -39,7 +39,7 @@ ALLOWED_PREDICTION_ROOM_TYPES = dict(
 ALLOWED_OBJECT_TARGET_INDEX = dict({'sofa': 9, 'desk': 17, 'sink': 13, 'wardrobe_cabinet': 14, 'bed': 15,
                                     'kitchen_cabinet': 8, 'shelving': 16, 'dresser': 20, 'chair': 10, 'television': 18,
                                     'toilet': 11, 'vehicle': 21, 'table': 12, 'pool': 22, 'household_appliance': 19})
-                                    #'table_and_chair': (10, 12)})
+                                    #'table_and_chair': (10, 12), 'dressing_table': 17, 'hanging_kitchen_cabinet': 8})
 
 def _equal_room_tp(room, target):
     """
@@ -59,15 +59,13 @@ def _equal_object_tp(obj, target):
     obj = obj.lower()
     return (obj == target) or \
            ((target == 'chair') and (obj == 'table_and_chair')) or \
-           ((target == 'table') and (obj == 'table_and_chair'))
+           ((target == 'table') and (obj == 'table_and_chair')) or \
+           ((target == 'desk') and (obj == 'dressing_table')) or \
+           ((target == 'kitchen_cabinet') and (obj == 'hanging_kitchen_cabinet'))
 
 
-def _get_object_categories(obj):
-    obj = obj.lower()
-    if obj == 'table_and_chair':
-        return ['table', 'chair']
-    else:
-        return [obj]
+def _get_object_categories(obj_cat):
+    return [tar for tar in ALLOWED_OBJECT_TARGET_INDEX if _equal_object_tp(obj_cat, tar)]
 
 
 def _get_pred_room_tp_id(room):
@@ -614,10 +612,10 @@ class House(_BaseHouse):
                       (obj['bbox']['min'][1] < self.robotHei * 1.5) and (obj['bbox']['max'][1] > self.carpetHei)
                       and (obj['modelId'] in self.id_to_tar)]
         for obj, cat in target_obj:
-            if cat not in ALLOWED_OBJECT_TARGET_TYPES: continue
+            list_of_cat = _get_object_categories(cat)
+            if len(list_of_cat) == 0: continue
             _x1, _, _y1 = obj['bbox']['min']
             _x2, _, _y2 = obj['bbox']['max']
-            list_of_cat = _get_object_categories(cat)
             for c in list_of_cat:
                 if c not in self.tar_obj_region:
                     self.tar_obj_region[c] = []
