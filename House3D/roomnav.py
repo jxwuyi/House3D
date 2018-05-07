@@ -112,7 +112,8 @@ class RoomNavTask(gym.Env):
                  target_mask_signal=False,
                  false_rate=0.0,
                  discrete_angle=False,
-                 supervision_signal=False):
+                 supervision_signal=False,
+                 min_birth_grid_dist=0):
         """RoomNav task wrapper with gym api
         Note:
             all the settings are the default setting to run a task
@@ -142,6 +143,7 @@ class RoomNavTask(gym.Env):
             false_rate: the rate of task that the target is not reachable
             discrete_angle: when True, the angle is always a multiplier of <discrete_rotation_sensitivity>
             supervision_signal: when True, we will cache the supervision signal for all the targets in all the houses
+            min_birth_grid_dist: the minimum grid distance between birthplace and the target (connMap[b_x, b_y] >= min_dist)
         """
         assert false_rate < 1e-8, 'Currently Only Support Valid Tasks!!!! False_Rate Must Be 0.0!!!'
 
@@ -205,6 +207,7 @@ class RoomNavTask(gym.Env):
         # config hardness
         self.hardness = None
         self.max_birthplace_steps = None
+        self.min_birth_grid_dist = 0
         self.availCoorsSize = None
         self.availCoorsLower = 0
         self._availCoorsSizeDict = None
@@ -306,7 +309,8 @@ class RoomNavTask(gym.Env):
             if self.supervision_signal: self.house.load_supervision_map(target)
             _id = self.house._id
             if self.house.targetRoomTp not in self._availCoorsSizeDict[_id]:
-                if (self.hardness is None) and (self.max_birthplace_steps is None):
+                self.availCoorsLower = 0
+                if (self.hardness is None) and (self.max_birthplace_steps is None) and (self.min_birth_grid_dist == 0):
                     self.availCoorsSize = self.house.getConnectedLocationSize()
                 else:
                     allowed_dist = self.house.maxConnDist
@@ -315,22 +319,13 @@ class RoomNavTask(gym.Env):
                     if self.max_birthplace_steps is not None:
                         allowed_dist = min(self.house.getAllowedGridDist(self.max_birthplace_steps * self.move_sensitivity), allowed_dist)
                     self.availCoorsSize = self.house.getConnectedLocationSize(max_allowed_dist=allowed_dist)
-                if target == 'outdoor':
-                    lower_size = self.house.getConnectedLocationSize(max_allowed_dist=0)
-                    if lower_size < allowed_dist:
-                        self.availCoorsLower = lower_size
-                        self.availCoorsSize -= lower_size
-                        self._availCoorsSizeDict[_id][self.house.targetRoomTp] = (lower_size, self.availCoorsSize)
-                        return
-                self.availCoorsLower = 0
-                self._availCoorsSizeDict[_id][self.house.targetRoomTp] = self.availCoorsSize
+                    if self.min_birth_grid_dist > 0:
+                        self.availCoorsLower = self.house.getConnectedLocationSize(max_allowed_dist=self.min_birth_grid_dist-1)
+                        self.availCoorsSize -= self.availCoorsLower
+                self._availCoorsSizeDict[_id][self.house.targetRoomTp] = (self.availCoorsLower, self.availCoorsSize)
             else:
-                val = self._availCoorsSizeDict[_id][self.house.targetRoomTp]
-                if isinstance(val, tuple):
-                    self.availCoorsLower, self.availCoorsSize = self._availCoorsSizeDict[_id][self.house.targetRoomTp]
-                else:
-                    self.availCoorsSize = self._availCoorsSizeDict[_id][self.house.targetRoomTp]
-                    self.availCoorsLower = 0
+                self.availCoorsLower, self.availCoorsSize = self._availCoorsSizeDict[_id][self.house.targetRoomTp]
+
 
     @property
     def house(self):
@@ -611,11 +606,15 @@ class RoomNavTask(gym.Env):
 
     """
     reset the hardness of the task
+      --> Note: hardness will be only updated when some param is not None
+                if None is given, the original hardness param will be kept
     """
-    def reset_hardness(self, hardness=None, max_birthplace_steps=None):
-        self.hardness = hardness
-        self.max_birthplace_steps = max_birthplace_steps
-        if (hardness is None) and (max_birthplace_steps is None):
+    def reset_hardness(self, hardness=None, max_birthplace_steps=None, min_birth_grid_dist=None):
+        self.hardness = hardness or self.hardness
+        self.max_birthplace_steps = max_birthplace_steps or self.max_birthplace_steps
+        self.min_birth_grid_dist = min_birth_grid_dist or self.min_birth_grid_dist
+        self.availCoorsSizeLower = 0
+        if (self.hardness is None) and (self.max_birthplace_steps is None) and (self.min_birth_grid_dist == 0):
             self.availCoorsSize = self.house.getConnectedLocationSize()
         else:
             allowed_dist = self.house.maxConnDist
@@ -623,18 +622,16 @@ class RoomNavTask(gym.Env):
                 allowed_dist = min(int(self.house.maxConnDist * hardness + 1e-10), allowed_dist)
             if max_birthplace_steps is not None:
                 allowed_dist = min(self.house.getAllowedGridDist(max_birthplace_steps * self.move_sensitivity), allowed_dist)
+            assert allowed_dist >= self.min_birth_grid_dist, \
+                "[RoomNavTask.reset_hardness] invalid parameters!!!! allowed_grid_dist = {}, min_grid_dist = {}".format(allowed_dist, self.min_birth_grid_dist)
             self.availCoorsSize = self.house.getConnectedLocationSize(max_allowed_dist=allowed_dist)
-        self.availCoorsSizeLower = 0
+            if self.min_birth_grid_dist > 0:
+                self.availCoorsLower = self.house.getConnectedLocationSize(max_allowed_dist=self.min_birth_grid_dist - 1)
+                self.availCoorsSize -= self.availCoorsLower
+
         n_house = self.env.num_house
         self._availCoorsSizeDict = [dict() for _ in range(n_house)]
-        if self.house.targetRoomTp == 'outdoor':
-            lower_size = self.house.getConnectedLocationSize(max_allowed_dist=0)
-            if lower_size < self.availCoorsSize:
-                self.availCoorsLower = lower_size
-                self.availCoorsSize -= lower_size
-                self._availCoorsSizeDict[self.house._id][self.house.targetRoomTp] = (self.availCoorsLower, self.availCoorsSize)
-                return
-        self._availCoorsSizeDict[self.house._id][self.house.targetRoomTp] = self.availCoorsSize
+        self._availCoorsSizeDict[self.house._id][self.house.targetRoomTp] = (self.availCoorsLower, self.availCoorsSize)
 
     """
     recover the state (location) of the agent from the info dictionary
