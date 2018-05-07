@@ -58,6 +58,7 @@ rotation_sensitivity = 30  # 45   # maximum rotation per time step
 discrete_rotation_sensitivity = 15
 default_move_sensitivity = 0.5  # 1.0   # maximum movement per time step
 
+"""
 # discrete action space actions, totally <13> actions
 # Fwd, L, R, LF, RF, Lrot, Rrot, Bck, s-Fwd, s-L, s-R, s-Lrot, s-Rrot, Stay
 # NOTE: at most 8 actions!!!!
@@ -70,9 +71,26 @@ discrete_actions=[(1.,0.,0.), (0.,1.,0.), (0.,-1.,0.), (0.4,0.4,0.), (0.4,-0.4,0
                   (-0.4,0.,0.),
                   (0.4,0.,0.), (0.,0.4,0.), (0.,-0.4,0.),
                   (0.,0.,0.5), (0.,0.,-0.5), (0., 0., 0.)]
-n_discrete_actions = len(discrete_actions)
 discrete_action_names = ['Forward', 'Left', 'Right', 'Left-Fwd', 'Right-Fwd', 'Left-Rotate', 'Right-Rotate',
                          'Backward', 'Small-Forward', 'Small-Left', 'Small-Right', 'Small-Left-Rot', 'Small-Right-Rot', 'Stay']
+"""
+
+# discrete action space actions, totally <9> actions
+# Fwd, LF, RF, Lrot, Rrot, s-Fwd, s-Lrot, s-Rrot, Stay
+# NOTE: allowed_actions_for_supervision[0] must be 0 (Fwd) !!!!!!
+allowed_actions_for_supervision = list(range(8))
+discrete_angle_delta_value = [0, 0, 0, 2, -2, 0, 1, -1, 0]
+discrete_actions=[(1.,0.,0.), (0.4,0.4,0.), (0.4,-0.4,0.),
+                  (0.,0.,1.), (0.,0.,-1.),
+                  (0.4,0.,0.),
+                  (0.,0.,0.5), (0.,0.,-0.5), (0., 0., 0.)]
+discrete_action_names = ['Forward', 'Left-Fwd', 'Right-Fwd', 'Left-Rotate', 'Right-Rotate',
+                         'Small-Forward', 'Small-Left-Rot', 'Small-Right-Rot', 'Stay']
+_full_discrete_actions = discrete_actions + [(0, 0.4, 0), (0, -0.4, 0), (-0.4, 0, 0)]  # L, R, Bck, total <12> actions
+_full_discrete_angle_delta_value = _full_discrete_actions + [0, 0, 0]
+_full_discrete_action_names = discrete_action_names + ['Left', 'Right', 'Backward']
+
+n_discrete_actions = len(discrete_actions)
 
 # criteria for seeing the object
 n_pixel_for_object_see = 450   # need at least see 450 pixels for success under default resolution 120 x 90
@@ -390,7 +408,10 @@ class RoomNavTask(gym.Env):
 
     def _apply_action(self, action):
         if self.discrete_action:
-            return discrete_actions[action]
+            if action < n_discrete_actions:
+                return discrete_actions[action]
+            else:
+                return _full_discrete_actions[action]
         else:
             rot = action[1][0] - action[1][1]
             act = action[0]
@@ -465,7 +486,7 @@ class RoomNavTask(gym.Env):
             self.collision_flag = True
         else:
             self.collision_flag = False
-            if self.discrete_angle is not None:
+            if (self.discrete_angle is not None) and (action < n_discrete_actions):
                 self._yaw_ind = (self._yaw_ind + discrete_angle_delta_value[action] + self.discrete_angle) % self.discrete_angle
             if flag_print_debug_info:
                 print('Move Successfully!')
