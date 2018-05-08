@@ -38,19 +38,19 @@ speed_reward_coef = 1.0
 success_stay_time_steps = 5
 success_see_target_time_steps = 2   # time steps required for success under the "see" criteria
 
-wrong_stop_penalty = 0 #-2
+wrong_stop_penalty = -2
 
 ######################################
 # reward function parameters for new
 ######################################
-new_time_penalty_reward = 0.03   # penalty for each time step
+new_time_penalty_reward = 0.05   # penalty for each time step
 new_reward_coef = 1.0
 new_reward_bound = 0.5
-new_leave_penalty = 0.5
+new_leave_penalty = 0.1
 new_stay_room_reward = 0.05
 new_success_stay_time_steps = 3
 new_success_reward = 10
-new_pixel_object_reward = 2
+new_pixel_object_reward = 1
 new_pixel_reward_rate = 0.10
 #####################################
 
