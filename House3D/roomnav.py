@@ -354,6 +354,28 @@ class RoomNavTask(gym.Env):
     def house(self):
         return self.env.house
 
+    def reset_obs_mode(self, segment_input, depth_signal=True, target_mask_signal=False, joint_visual_signal=False):
+        self.segment_input = segment_input
+        self.joint_visual_signal = joint_visual_signal
+        self.depth_signal = depth_signal
+        self.target_mask_signal = target_mask_signal
+        n_channel = 3
+        if segment_input:
+            self.env.set_render_mode('semantic')
+        else:
+            self.env.set_render_mode('rgb')
+        if joint_visual_signal: n_channel += 3
+        if depth_signal: n_channel += 1
+        if target_mask_signal: n_channel += 1
+        self._observation_shape = (self.resolution[0], self.resolution[1], n_channel)
+        self._observation_space = spaces.Box(0, 255, shape=self._observation_shape)
+
+    def get_obs_mode(self):
+        return dict(segment_input=self.segment_input,
+                    depth_signal=self.depth_signal,
+                    target_mask_signal=self.target_mask_signal,
+                    joint_visual_signal=self.joint_visual_signal)
+
     """
     gym api: reset function
     when target is not None, we will set the target room type to navigate to
