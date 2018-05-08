@@ -600,6 +600,8 @@ class RoomNavTask(gym.Env):
             sup_act = self.house.get_supervision(gx, gy, self._yaw_ind)
             if sup_act >= 0: sup_act = self._allowed_sup_action_idx[sup_act]
             ret['supervision'] = sup_act
+        if self.discrete_angle is not None:
+            ret['_yaw_ind'] = self._yaw_ind
         return ret
 
     def get_current_target(self):
@@ -665,6 +667,8 @@ class RoomNavTask(gym.Env):
     """
     def set_state(self, info):
         self.env.reset(x=info['loc'][0], y=info['loc'][1], yaw=info['yaw'])
+        if self.discrete_angle is not None:
+            self._yaw_ind = info['_yaw_ind']
 
     """
     return 2d topdown map
