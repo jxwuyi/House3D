@@ -43,7 +43,7 @@ wrong_stop_penalty = -2
 ######################################
 # reward function parameters for new
 ######################################
-new_time_penalty_reward = 0.05   # penalty for each time step
+new_time_penalty_reward = 0.1   # penalty for each time step
 new_reward_coef = 1.0
 new_reward_bound = 0.5
 new_leave_penalty = 0.1
