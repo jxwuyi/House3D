@@ -369,12 +369,30 @@ class RoomNavTask(gym.Env):
         if target_mask_signal: n_channel += 1
         self._observation_shape = (self.resolution[0], self.resolution[1], n_channel)
         self._observation_space = spaces.Box(0, 255, shape=self._observation_shape)
+        self._re_render()
 
     def get_obs_mode(self):
         return dict(segment_input=self.segment_input,
                     depth_signal=self.depth_signal,
                     target_mask_signal=self.target_mask_signal,
                     joint_visual_signal=self.joint_visual_signal)
+
+    def _re_render(self):
+        # generate state
+        self._cached_seg = None
+        self.last_obs = self.env.render()
+        if self.joint_visual_signal:
+            self.last_obs = np.concatenate([self.env.render(mode='rgb'), self.last_obs], axis=-1)
+        ret_obs = self.last_obs
+        if self.depth_signal:
+            dep_sig = self.env.render(mode='depth')
+            if dep_sig.shape[-1] > 1:
+                dep_sig = dep_sig[..., 0:1]
+            ret_obs = np.concatenate([ret_obs, dep_sig], axis=-1)
+        if self.target_mask_signal:
+            ret_obs = np.concatenate([ret_obs, self._gen_target_mask()], axis=-1)
+        self._cached_obs = ret_obs
+        return ret_obs
 
     """
     gym api: reset function
@@ -456,7 +474,10 @@ class RoomNavTask(gym.Env):
     return 0/1 binary mask, indicating the target pixels
     """
     def _gen_target_mask(self):
-        self._cached_mask[:, :] = 0
+        if self._cached_mask is None:
+            self._cached_mask = np.zeros((self.resolution[1],self.resolution[0],1), dtype=np.uint8)
+        else:
+            self._cached_mask[:, :] = 0
         seg_obs = self._fetch_cached_segmentation()
         object_color_list = self.room_target_object[self.house.targetRoomTp]
         for c in object_color_list:
