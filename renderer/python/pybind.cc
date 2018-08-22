@@ -102,6 +102,8 @@ PYBIND11_MODULE(objrender, m) {
     .def("_genExpandedRegionMaskFromTargetMap", &BaseHouse::_genExpandedRegionMaskFromTargetMap)
     .def("_genExpandedRegionMaskForRoomMask", &BaseHouse::_genExpandedRegionMaskForRoomMask)
     .def("_genSupervisionMap", &BaseHouse::_genSupervisionMap)
+    // Generate Offline Supervision Data
+    .def("_compute_supervision_plan", &BaseHouse::_compute_supervision_plan)
     // Target Dist Map Setter Functions
     .def("_clearCurrentDistMap", &BaseHouse::_clearCurrentDistMap)
     .def("_setCurrentDistMap", &BaseHouse::_setCurrentDistMap)

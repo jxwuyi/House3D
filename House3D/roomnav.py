@@ -11,6 +11,7 @@ import csv
 import copy
 import cv2
 import pickle
+import heapq
 
 import gym
 from gym import spaces
@@ -93,6 +94,7 @@ _full_discrete_angle_delta_value = _full_discrete_actions + [0, 0, 0]
 _full_discrete_action_names = discrete_action_names + ['Left', 'Right', 'Backward']
 
 n_discrete_actions = len(discrete_actions)
+n_discrete_angles = 360 // discrete_rotation_sensitivity
 
 # criteria for seeing the object
 n_pixel_for_object_see = 450   # need at least see 450 pixels for success under default resolution 120 x 90
@@ -133,7 +135,8 @@ class RoomNavTask(gym.Env):
                  false_rate=0.0,
                  discrete_angle=False,
                  supervision_signal=False,
-                 min_birth_grid_dist=0):
+                 min_birth_grid_dist=0,
+                 cache_discrete_angles=False):
         """RoomNav task wrapper with gym api
         Note:
             all the settings are the default setting to run a task
@@ -163,6 +166,7 @@ class RoomNavTask(gym.Env):
             false_rate: the rate of task that the target is not reachable
             discrete_angle: when True, the angle is always a multiplier of <discrete_rotation_sensitivity>
             supervision_signal: when True, we will cache the supervision signal for all the targets in all the houses
+            cache_discrete_angles: when True, we will pre-compute the actions w.r.t. each discrete rotation angles
             min_birth_grid_dist: the minimum grid distance between birthplace and the target (connMap[b_x, b_y] >= min_dist)
         """
         assert false_rate < 1e-8, 'Currently Only Support Valid Tasks!!!! False_Rate Must Be 0.0!!!'
@@ -249,7 +253,7 @@ class RoomNavTask(gym.Env):
             assert 360 % discrete_rotation_sensitivity == 0, 'When discrete_angle, 360 must be divided by <discrete_rotation_sensitivity = {}>!'.format(rotation_sensitivity)
             self.discrete_angle = 360 // discrete_rotation_sensitivity
         self.supervision_signal = supervision_signal
-        if supervision_signal:
+        if supervision_signal or cache_discrete_angles:
             assert (discrete_angle and discrete_action), 'When <supervision_signal>, <discrete_angle> AND <discrete_action> must be True!'
             assert (len(allowed_actions_for_supervision) <= 8), 'Only support <allowed_actions_for_supervision> containing at most 8 actions!'
             # assume shortest paths have been cached
@@ -277,7 +281,8 @@ class RoomNavTask(gym.Env):
                 else:
                     action=(dx,dy,2)
                 self._allowed_sup_actions.append(action)
-            self.env.cache_supervision(self._angle_dir, self._allowed_sup_actions)
+            if supervision_signal:
+                self.env.cache_supervision(self._angle_dir, self._allowed_sup_actions)
 
         # temp storage
         self.collision_flag = False
@@ -733,3 +738,85 @@ class RoomNavTask(gym.Env):
 
     def debug_show(self):
         return self.env.debug_render()
+
+    def gen_supervised_plan(self, birth_cx, birth_cy, birth_rot):
+        assert len(self._angle_dir) == n_discrete_angles
+        assert self.discrete_angle == n_discrete_angles
+
+        prec = 10
+        birth_rot %= n_discrete_angles
+        def h_func(cx, cy):
+            gx, gy = self.house.to_grid(cx, cy)
+            dist = self.house.connMap[gx, gy]
+            return self.house.getOptSteps(dist, self.move_sensitivity)
+
+        opt = {}
+
+        def check_update(cx, cy, rot, step):
+            cx = round(cx, prec)
+            cy = round(cy, prec)
+            t_state = (cx, cy, rot)
+            if (t_state not in opt) or (step < opt[t_state][0]):
+                return t_state
+            return None
+
+        def check_action(cx, cy, rot, act, is_rev=False):
+            dx = self._allowed_sup_actions[act][0] * self._angle_dir[0] + self._allowed_sup_actions[act][1] * self._angle_dir[2]
+            dy = self._allowed_sup_actions[act][0] * self._angle_dir[1] + self._allowed_sup_actions[act][1] * self._angle_dir[3]
+            dr = self._allowed_sup_actions[act][2]
+            if is_rev:
+                dx, dy, dr = -dx, -dy, -dr
+            t_cx = cx + dx
+            t_cy = cy + dy
+            if is_rev or self.env._check_collision((cx, 0, cy), (t_cx, 0, t_cy)):
+                t_rot = (rot + dr) % n_discrete_angles
+                return t_cx, t_cy, t_rot
+            return None
+
+        state = check_update(birth_cx, birth_cy, birth_rot, 0)
+        hp = [(h_func(birth_cx, birth_cy), 0, (birth_cx, birth_cy, birth_rot))]
+        opt[state] = (0, -1)
+
+        self.last_obs = None
+        self._cached_seg = None
+        flag_found = False
+        while len(hp) > 0:
+            dat = heapq.heappop(hp)
+            cur_step = dat[1]
+            cx, cy, rot = dat[2]
+            gx, gy = self.house.to_grid(cx, cy)
+            raw_dist = self.house.connMap[gx, gy]
+            if self._is_success(raw_dist, (gx, gy), -1) or self.success_stay_cnt > 0:
+                flag_found = True
+                break  # succeed
+            for a_id in allowed_actions_for_supervision:
+                next = check_action(cx, cy, rot, a_id)
+                if next is None:
+                    continue
+                t_state = check_update(next[0], next[1], next[2], cur_step + 1)
+                if t_state is not None:
+                    opt[t_state] = (cur_step + 1, a_id)
+                    h_val = h_func(next[0], next[1])  # A* heuristic function
+                    heapq.heappush(hp, (cur_step + 1 + h_val, cur_step + 1, next))
+        assert flag_found, '[RoomNav] Gen_Supervised_Plan Error!! Not Available Plan Found! Birth = {}, target = <{}>'.format((birth_cx, birth_cy, birth_rot), self.house.targetRoomTp)
+
+        # Trace Back Shortest Path
+        def get_prev_state(raw_cx, raw_cy, rot):
+            cx = round(raw_cx, prec)
+            cy = round(raw_cy, prec)
+            state = (cx, cy, rot)
+            act = opt[state][1]
+            if act < 0:  # birth place
+                prev = None
+            else:
+                prev = check_action(raw_cx, raw_cy, rot, act, is_rev=True)
+            return prev, act
+
+        stop_action = len(allowed_actions_for_supervision)  # index for stop action
+        plan = [(cx, cy, rot * discrete_rotation_sensitivity - 180.0, stop_action)]
+        prev, act = get_prev_state(cx, cy, rot)
+        while prev is not None:
+            plan.append((prev[0], prev[1], prev[2] * discrete_rotation_sensitivity - 180.0, act))
+            prev, act = get_prev_state(*prev)
+        plan.reverse()
+        return plan

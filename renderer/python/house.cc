@@ -2,6 +2,8 @@
 
 #include "house.hh"
 
+#include<functional>
+
 namespace render {
 
 #define MKP(a,b) make_pair(a,b)
@@ -909,6 +911,61 @@ bool BaseHouse::_genSupervisionMap(const vector<tuple<double,double,double,doubl
     delete opt;
     delete avail_actions;
     return true;
+}
+
+// compute offline supervision data
+// given starting point and target, compute the actions for the shortest path (discretized rotation angles)
+vector<int> BaseHouse::_compute_supervision_plan(double cx, double cy, const string& target,
+                                                 const vector<tuple<double,double,double,double>>& angle_dirs,
+                                                 const vector<tuple<double,double,int>>& actions) {
+    // fetch dist map
+    auto iter = targetInd.find(tag);
+    if (iter == targetInd.end()) return vector<int>(); // no such target
+    auto connMap = &connMapLis[iter->second];
+
+    // fetch stop action
+    static const double eps = 1e-8;
+    int stop_act = -1;
+    for(size_t i = 0; i < actions.size(); ++i) {
+        auto& a = actions[i];
+        if (get<2>(a) == 0 && fabs(get<0>(a)) <= eps && fabs(get<1>(a)) <= eps) {
+            stop_act = i;
+            break;
+        }
+    }
+
+    // init data structure
+    typedef tuple<double,double,int> STATE;
+    static auto comp = [](const STATE& a, const STATE& b)->bool {
+        if (fabs(get<0>(a) - get<0>(b)) > eps)
+            return get<0>(a) < get<0>(b);
+        else
+        if (fabs(get<1>(a) - get<1>(b)) > eps)
+            return get<1>(a) < get<1>(b);
+        else
+            return get<2>(a) < get<2>(b);
+    };
+    map<STATE, pair<int, int>, decltype(comp)> opt(comp); // A* search table, <#steps, prev_action>
+    typedef tuple<int, STATE> QUE_ITEM;
+    priority_queue<QUE_ITEM, vector<QUE_ITEM>, greater<QUE_ITEM>> que;
+
+    // init H function
+    double move_sensitivity = 0.0;
+    for (auto& a: actions) {
+        const double& dx = get<0>(a);
+        const double& dy = get<1>(a);
+        double cur_move = sqrt(dx * dx + dy * dy);
+        if (cur_move > move_sensitivity) move_sensitivity = cur_move;
+    }
+    double move_grid_det = move_sensitivity / grid_det;
+    auto h_func = [&](const double &cx, const double &cy)->int {
+        int gx, gy; tie(gx, gy) = _to_grid(cx, cy, n);
+        return (int)ceil(*connMap.data(gx,gy) / move_grid_det - eps);
+    }
+
+    // A* search
+
+    // TODO: 
 }
 
 }

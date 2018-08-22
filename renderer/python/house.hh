@@ -135,6 +135,18 @@ public:
                             const vector<tuple<double,double,int>>& actions);
 
     /////////////////////////////////////////
+    // Generate Offline Supervision Data
+    /////////////////////////////////////////
+    // Compute the shortest path from coor-(cx, cy) to target <target> via A* search
+    // return the sequence of actions
+    // list of available actions and angle_directions must be provided
+    // NOTE: assume discretized rotation angles
+    vector<int> _compute_supervision_plan(double cx, double cy, const string& target,
+                                          const vector<tuple<double,double,double,double>>& angle_dirs,
+                                          const vector<tuple<double,double,int>>& actions)
+
+
+    /////////////////////////////////////////
     // Target Dist Map Setter Functions
     /////////////////////////////////////////
     // clear and set current distance info
