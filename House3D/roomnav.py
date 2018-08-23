@@ -861,3 +861,33 @@ class RoomNavTask(gym.Env):
         if logging:
             ret_data.append({"iterations": iters, "state_expanded": st_cnt})
         return ret_data
+
+    ###################
+    # DEBUG USE
+    ###################
+    def _sanity_check_supervised_plan(self, info, actions):
+        print('Sanity Checking ....')
+        # init birth state
+        if info['house_id'] != self.info['house_id']:
+            self.env.reset_house(info['house_id'])
+        self.reset(target=info['target_room'], reset_house=False, birthplace=info['loc'])
+        self.env.reset(x=info['loc'][0], y=info['loc'][1], yaw=info['yaw'])
+        # start simulation
+        n = len(actions)
+        accu_reward = 0
+        flag_done = False
+        flag_full = False
+        for i in range(n):
+            a = actions[i]
+            _, reward, done, _ = self.step(a)
+            accu_reward += reward
+            if done:
+                flag_done = reward > 4
+                flag_full = (i == n - 1)
+                break
+        print('  >> Finished!')
+        print('    -> Total Input Actions = {}'.format(n))
+        print('    -> Accu Rew = {}'.format(accu_reward))
+        print('    -> Success = {}'.format(flag_done))
+        print('    -> Terminate in the last step = {}'.format(flag_full))
+        return flag_done and flag_full
