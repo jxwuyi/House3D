@@ -166,8 +166,8 @@ class RoomNavTask(gym.Env):
             false_rate: the rate of task that the target is not reachable
             discrete_angle: when True, the angle is always a multiplier of <discrete_rotation_sensitivity>
             supervision_signal: when True, we will cache the supervision signal for all the targets in all the houses
-            cache_discrete_angles: when True, we will pre-compute the actions w.r.t. each discrete rotation angles
             min_birth_grid_dist: the minimum grid distance between birthplace and the target (connMap[b_x, b_y] >= min_dist)
+            cache_discrete_angles: when True, we will pre-compute the actions w.r.t. each discrete rotation angles
         """
         assert false_rate < 1e-8, 'Currently Only Support Valid Tasks!!!! False_Rate Must Be 0.0!!!'
 
@@ -191,7 +191,7 @@ class RoomNavTask(gym.Env):
         if joint_visual_signal: n_channel += 3
         if depth_signal: n_channel += 1
         if target_mask_signal: n_channel += 1
-        self._observation_shape = (resolution[0], resolution[1], n_channel)
+        self._observation_shape = (resolution[1], resolution[0], n_channel)
         self._observation_space = spaces.Box(0, 255, shape=self._observation_shape)
 
         self.max_steps = max_steps
@@ -293,13 +293,13 @@ class RoomNavTask(gym.Env):
         self._prev_object_see_rate = 0
 
         # config success measure
-        assert success_measure in ['stay', 'see', 'stop']
-        if success_measure == 'stop':
+        assert success_measure in ['stay', 'see', 'stop', 'see-stop']
+        if 'stop' in success_measure:
             assert self.discrete_action, 'success_measure <stop> only supports discrete action'
         self.success_measure = success_measure
         print('[RoomNavTask] >> Success Measure = <{}>'.format(success_measure))
         self.success_stay_cnt = 0
-        if success_measure == 'see':
+        if 'see' in success_measure:
             self.room_target_object = dict(outdoor=[])  # outdoor is a special category
             self._load_target_object_data(self.env.config['roomTargetFile'])
             if self.include_object_target:
@@ -372,7 +372,7 @@ class RoomNavTask(gym.Env):
         if joint_visual_signal: n_channel += 3
         if depth_signal: n_channel += 1
         if target_mask_signal: n_channel += 1
-        self._observation_shape = (self.resolution[0], self.resolution[1], n_channel)
+        self._observation_shape = (self.resolution[1], self.resolution[0], n_channel)
         self._observation_space = spaces.Box(0, 255, shape=self._observation_shape)
         self._re_render()
 
@@ -498,6 +498,8 @@ class RoomNavTask(gym.Env):
             return self.success_stay_cnt >= success_stay_time_steps
         if self.success_measure == 'stop':
             return act == (n_discrete_actions - 1)   # stay action
+        if (self.success_measure == 'see-stop') and (act != n_discrete_actions - 1):
+            return False
         # self.success_measure == 'see'
         object_color_list = self.room_target_object[self.house.targetRoomTp]
         flag_see_target_objects = (len(object_color_list) == 0)
@@ -514,6 +516,8 @@ class RoomNavTask(gym.Env):
                 if self._object_cnt >= n_pixel_for_object_see:
                     flag_see_target_objects = True
                     break
+        if self.success_measure == 'see-stop':
+            return flag_see_target_objects
         if flag_see_target_objects:
             self.success_stay_cnt += 1
         else:
@@ -569,7 +573,7 @@ class RoomNavTask(gym.Env):
             done = True
         # accumulate episode step
         self.current_episode_step += 1
-        if (self.success_measure == 'stop') and (action == n_discrete_actions - 1):
+        if ('stop' in self.success_measure) and (action == n_discrete_actions - 1):
             if not done: reward += wrong_stop_penalty
             done = True
         if (self.max_steps > 0) and (self.current_episode_step >= self.max_steps): done = True
@@ -616,7 +620,7 @@ class RoomNavTask(gym.Env):
 
         # object seen reward
         if self.current_episode_step > self.reward_silence:
-            if (raw_dist == 0) and (self.success_measure == 'see'):  # inside target room and success measure is <see>
+            if (raw_dist == 0) and ('see' in self.success_measure):  # inside target room and success measure is <see>
                 if not done:
                     curr_obj_see_rate = np.clip((self._object_cnt - n_pixel_for_object_sense) / self.pixelRewBase, 0., 1.)
                     object_reward = self.pixelRew * (curr_obj_see_rate if self.reward_type != 'new' else (curr_obj_see_rate - self._prev_object_see_rate))
@@ -739,9 +743,17 @@ class RoomNavTask(gym.Env):
     def debug_show(self):
         return self.env.debug_render()
 
-    def gen_supervised_plan(self, birth_cx, birth_cy, birth_rot):
+    def gen_supervised_plan(self, birth_state=None,
+                            return_numpy_frames=False, max_allowed_steps=None,
+                            mask_feature_dim=None, logging=False):
         assert len(self._angle_dir) == n_discrete_angles
         assert self.discrete_angle == n_discrete_angles
+
+        if birth_state is None:
+            birth_cx, birth_cy = self.env.info['loc']
+            birth_rot = self.env.info['yaw']
+        else:
+            birth_cx, birth_cy, birth_rot = birth_state
 
         prec = 10
         birth_rot %= n_discrete_angles
@@ -780,13 +792,18 @@ class RoomNavTask(gym.Env):
         self.last_obs = None
         self._cached_seg = None
         flag_found = False
+
+        iters = 0
+        st_cnt = 1
+        stop_act = len(allowed_actions_for_supervision)  # index for STOP action
         while len(hp) > 0:
+            iters += 1
             dat = heapq.heappop(hp)
             cur_step = dat[1]
             cx, cy, rot = dat[2]
             gx, gy = self.house.to_grid(cx, cy)
             raw_dist = self.house.connMap[gx, gy]
-            if self._is_success(raw_dist, (gx, gy), -1) or self.success_stay_cnt > 0:
+            if self._is_success(raw_dist, (gx, gy), stop_act) or self.success_stay_cnt > 0:
                 flag_found = True
                 break  # succeed
             for a_id in allowed_actions_for_supervision:
@@ -798,6 +815,7 @@ class RoomNavTask(gym.Env):
                     opt[t_state] = (cur_step + 1, a_id)
                     h_val = h_func(next[0], next[1])  # A* heuristic function
                     heapq.heappush(hp, (cur_step + 1 + h_val, cur_step + 1, next))
+                    st_cnt += 1
         assert flag_found, '[RoomNav] Gen_Supervised_Plan Error!! Not Available Plan Found! Birth = {}, target = <{}>'.format((birth_cx, birth_cy, birth_rot), self.house.targetRoomTp)
 
         # Trace Back Shortest Path
@@ -812,11 +830,34 @@ class RoomNavTask(gym.Env):
                 prev = check_action(raw_cx, raw_cy, rot, act, is_rev=True)
             return prev, act
 
-        stop_action = len(allowed_actions_for_supervision)  # index for stop action
-        plan = [(cx, cy, rot * discrete_rotation_sensitivity - 180.0, stop_action)]
-        prev, act = get_prev_state(cx, cy, rot)
+        act = stop_act
+        prev = (cx, cy, rot)
+        plan = []
         while prev is not None:
             plan.append((prev[0], prev[1], prev[2] * discrete_rotation_sensitivity - 180.0, act))
             prev, act = get_prev_state(*prev)
+        if max_allowed_steps is not None:
+            plan = plan[:max_allowed_steps]
         plan.reverse()
-        return plan
+        if not return_numpy_frames:
+            if logging: return plan, {"iterations": iters, "state_expanded": st_cnt}
+            return plan
+
+        # render frames and return numpy arrays
+        n_plan = len(plan)
+        np_act = np.zeros(n_plan, dtype=np.int32)
+        np_frames = np.zeros(n_plan, self._observation_shape[0], self._observation_shape[1], self._observation_shape[2], dtype=np.uint8)
+        np_mask_feat = np.zeros(n_plan, mask_feature_dim, dtype=np.uint8) if mask_feature_dim is not None else None
+        for i, dat in enumerate(plan):
+            cx, cy, yaw, a = dat
+            self.env.reset(cx, cy, yaw)
+            np_frames[i, ...] = self._re_render()
+            np_act[i] = a
+            if np_mask_feat is not None:
+                np_mask_feat[i, :] = self.env.get_feature_mask()[: mask_feature_dim]
+        ret_data = [np_frames, np_act]
+        if np_mask_feat is not None:
+            ret_data.append(np_mask_feat)
+        if logging:
+            ret_data.append({"iterations": iters, "state_expanded": st_cnt})
+        return ret_data
