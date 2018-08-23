@@ -807,6 +807,11 @@ class RoomNavTask(gym.Env):
             cx, cy, rot = dat[2]
             gx, gy = self.house.to_grid(cx, cy)
             raw_dist = self.house.connMap[gx, gy]
+
+            if iters % 100 == 0:
+                print('>>>>>>> current <%d> states expanded!! current step = %d, heuristic = %d' % (iters, cur_step, dat[0]-cur_step))
+
+
             # set up camera for success checking
             yaw = rot * discrete_rotation_sensitivity - 180.0
             self.env.reset(x=cx, y=cy, yaw=yaw)
@@ -824,6 +829,8 @@ class RoomNavTask(gym.Env):
                     heapq.heappush(hp, (cur_step + 1 + h_val, cur_step + 1, next))
                     st_cnt += 1
         assert flag_found, '[RoomNav] Gen_Supervised_Plan Error!! Not Available Plan Found! Birth = {}, target = <{}>'.format((birth_cx, birth_cy, birth_rot), self.house.targetRoomTp)
+
+        print('Path Found!!!')
 
         # Trace Back Shortest Path
         def get_prev_state(raw_cx, raw_cy, rot):
@@ -853,8 +860,8 @@ class RoomNavTask(gym.Env):
         # render frames and return numpy arrays
         n_plan = len(plan)
         np_act = np.zeros(n_plan, dtype=np.int32)
-        np_frames = np.zeros(n_plan, self._observation_shape[0], self._observation_shape[1], self._observation_shape[2], dtype=np.uint8)
-        np_mask_feat = np.zeros(n_plan, mask_feature_dim, dtype=np.uint8) if mask_feature_dim is not None else None
+        np_frames = np.zeros((n_plan, self._observation_shape[0], self._observation_shape[1], self._observation_shape[2]), dtype=np.uint8)
+        np_mask_feat = np.zeros((n_plan, mask_feature_dim), dtype=np.uint8) if mask_feature_dim is not None else None
         for i, dat in enumerate(plan):
             cx, cy, yaw, a = dat
             self.env.reset(x=cx, y=cy, yaw=yaw)
