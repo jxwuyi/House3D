@@ -751,12 +751,14 @@ class RoomNavTask(gym.Env):
 
         if birth_state is None:
             birth_cx, birth_cy = self.env.info['loc']
-            birth_rot = self.env.info['yaw']
+            birth_rot_ind = self.info['_yaw_ind']
         else:
-            birth_cx, birth_cy, birth_rot = birth_state
+            birth_cx, birth_cy, birth_rot_ind = birth_state
+            if not isinstance(birth_rot_ind):
+                birth_rot_ind = int(birth_rot_ind + 180 + 1e-10) // discrete_rotation_sensitivity
 
-        prec = 10
-        birth_rot %= n_discrete_angles
+        prec = 8
+        birth_rot_ind %= n_discrete_angles
         def h_func(cx, cy):
             gx, gy = self.house.to_grid(cx, cy)
             dist = self.house.connMap[gx, gy]
@@ -773,8 +775,10 @@ class RoomNavTask(gym.Env):
             return None
 
         def check_action(cx, cy, rot, act, is_rev=False):
-            dx = self._allowed_sup_actions[act][0] * self._angle_dir[0] + self._allowed_sup_actions[act][1] * self._angle_dir[2]
-            dy = self._allowed_sup_actions[act][0] * self._angle_dir[1] + self._allowed_sup_actions[act][1] * self._angle_dir[3]
+            dx = self._allowed_sup_actions[act][0] * self._angle_dir[rot][0] \
+                 + self._allowed_sup_actions[act][1] * self._angle_dir[rot][2]
+            dy = self._allowed_sup_actions[act][0] * self._angle_dir[rot][1] \
+                 + self._allowed_sup_actions[act][1] * self._angle_dir[rot][3]
             dr = self._allowed_sup_actions[act][2]
             if is_rev:
                 dx, dy, dr = -dx, -dy, -dr
@@ -785,8 +789,8 @@ class RoomNavTask(gym.Env):
                 return t_cx, t_cy, t_rot
             return None
 
-        state = check_update(birth_cx, birth_cy, birth_rot, 0)
-        hp = [(h_func(birth_cx, birth_cy), 0, (birth_cx, birth_cy, birth_rot))]
+        state = check_update(birth_cx, birth_cy, birth_rot_ind, 0)
+        hp = [(h_func(birth_cx, birth_cy), 0, (birth_cx, birth_cy, birth_rot_ind))]
         opt[state] = (0, -1)
 
         self.last_obs = None
@@ -803,6 +807,9 @@ class RoomNavTask(gym.Env):
             cx, cy, rot = dat[2]
             gx, gy = self.house.to_grid(cx, cy)
             raw_dist = self.house.connMap[gx, gy]
+            # set up camera for success checking
+            yaw = rot * discrete_rotation_sensitivity - 180.0
+            self.env.reset(x=cx, y=cy, yaw=yaw)
             if self._is_success(raw_dist, (gx, gy), stop_act) or self.success_stay_cnt > 0:
                 flag_found = True
                 break  # succeed
@@ -850,7 +857,7 @@ class RoomNavTask(gym.Env):
         np_mask_feat = np.zeros(n_plan, mask_feature_dim, dtype=np.uint8) if mask_feature_dim is not None else None
         for i, dat in enumerate(plan):
             cx, cy, yaw, a = dat
-            self.env.reset(cx, cy, yaw)
+            self.env.reset(x=cx, y=cy, yaw=yaw)
             np_frames[i, ...] = self._re_render()
             np_act[i] = a
             if np_mask_feat is not None:
