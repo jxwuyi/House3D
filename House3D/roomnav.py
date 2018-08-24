@@ -748,9 +748,18 @@ class RoomNavTask(gym.Env):
 
     def gen_supervised_plan(self, birth_state=None,
                             return_numpy_frames=False, max_allowed_steps=None,
-                            mask_feature_dim=None, logging=False):
+                            mask_feature_dim=None, logging=False,
+                            logger=None, silence=False):
         assert len(self._angle_dir) == n_discrete_angles
         assert self.discrete_angle == n_discrete_angles
+
+        def logstr(str):
+            if silence:
+                return
+            if logger is None:
+                print(str)
+            else:
+                logger.print(str)
 
         if not hasattr(self, '_flag_cached_objdist'):
             self._flag_cached_objdist = dict()
@@ -828,7 +837,7 @@ class RoomNavTask(gym.Env):
             raw_dist = self.house.connMap[gx, gy]
 
             if iters % report_gap == 0:
-                print('>>>>>>> current <%d> states expanded!! current step = %d, heuristic = %d, raw_dist = %d' % (iters, cur_step, dat[0]-cur_step, raw_dist))
+                logstr('>>>>>>> current <%d> states expanded!! current step = %d, heuristic = %d, raw_dist = %d' % (iters, cur_step, dat[0]-cur_step, raw_dist))
 
 
             # set up camera for success checking
