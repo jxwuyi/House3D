@@ -772,6 +772,9 @@ class RoomNavTask(gym.Env):
                 self._flag_cached_objdist[cached_key] = self.house.targetRoomTp + '-obj'
             else:
                 self._flag_cached_objdist[cached_key] = self.house.targetRoomTp
+            backup_target = self.house.targetRoomTp
+            self.house.targetRoomTp = None
+            self.house.setTargetRoom(backup_target)
         h_func_map_tag = self._flag_cached_objdist[cached_key]
 
         if birth_state is None:

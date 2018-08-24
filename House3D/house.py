@@ -866,7 +866,7 @@ class House(_BaseHouse):
     #######################
     def _genObjDistForTargetRoom(self, targetRoomTp, targetObjList):
         targetRoomTp = targetRoomTp.lower()
-        if (targetRoomTp not in ALLOWED_TARGET_ROOM_TYPES) or (targetRoomTp == 'outdoor'):
+        if (targetRoomTp not in self.all_desired_roomTypes) or (targetRoomTp == 'outdoor'):
             print('[House-Data-Gen] Error! Not supported Room Type = {}'.format(targetRoomTp))
             return False
         if (len(targetObjList) == 0):
