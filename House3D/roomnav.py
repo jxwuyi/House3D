@@ -749,7 +749,7 @@ class RoomNavTask(gym.Env):
     def gen_supervised_plan(self, birth_state=None,
                             return_numpy_frames=False, max_allowed_steps=None,
                             mask_feature_dim=None, logging=False,
-                            logger=None, silence=False):
+                            max_expansion=None, logger=None, silence=False):
         assert len(self._angle_dir) == n_discrete_angles
         assert self.discrete_angle == n_discrete_angles
 
@@ -830,6 +830,8 @@ class RoomNavTask(gym.Env):
 
         while len(hp) > 0:
             iters += 1
+            if (max_expansion is not None) and (iters > max_expansion):
+                break
             dat = heapq.heappop(hp)
             cur_step = dat[1]
             cx, cy, rot = dat[2]
@@ -859,6 +861,9 @@ class RoomNavTask(gym.Env):
                     h_val = h_func(next[0], next[1])  # A* heuristic function
                     heapq.heappush(hp, (cur_step + 1 + h_val, cur_step + 1, next))
                     st_cnt += 1
+        if not flag_found and (max_expansion is not None) and (iters > max_expansion):
+            return None
+
         assert flag_found, '[RoomNav] Gen_Supervised_Plan Error!! Not Available Plan Found! Birth = {}, target = <{}>'.format((birth_cx, birth_cy, birth_rot_ind), self.house.targetRoomTp)
 
         # Trace Back Shortest Path
