@@ -919,7 +919,7 @@ vector<int> BaseHouse::_compute_supervision_plan(double cx, double cy, const str
                                                  const vector<tuple<double,double,double,double>>& angle_dirs,
                                                  const vector<tuple<double,double,int>>& actions) {
     // fetch dist map
-    auto iter = targetInd.find(tag);
+    auto iter = targetInd.find(target);
     if (iter == targetInd.end()) return vector<int>(); // no such target
     auto connMap = &connMapLis[iter->second];
 
@@ -960,8 +960,8 @@ vector<int> BaseHouse::_compute_supervision_plan(double cx, double cy, const str
     double move_grid_det = move_sensitivity / grid_det;
     auto h_func = [&](const double &cx, const double &cy)->int {
         int gx, gy; tie(gx, gy) = _to_grid(cx, cy, n);
-        return (int)ceil(*connMap.data(gx,gy) / move_grid_det - eps);
-    }
+        return (int)ceil(*connMap->data(gx,gy) / move_grid_det - eps);
+    };
 
     // A* search
 

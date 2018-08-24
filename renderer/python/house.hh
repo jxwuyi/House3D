@@ -143,7 +143,7 @@ public:
     // NOTE: assume discretized rotation angles
     vector<int> _compute_supervision_plan(double cx, double cy, const string& target,
                                           const vector<tuple<double,double,double,double>>& angle_dirs,
-                                          const vector<tuple<double,double,int>>& actions)
+                                          const vector<tuple<double,double,int>>& actions);
 
 
     /////////////////////////////////////////
