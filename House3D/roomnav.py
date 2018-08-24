@@ -795,10 +795,10 @@ class RoomNavTask(gym.Env):
             return None
 
         def check_action(cx, cy, rot, act, is_rev=False):
-            dx = self._allowed_sup_actions[act][0] * self._angle_dir[rot][0] \
-                 + self._allowed_sup_actions[act][1] * self._angle_dir[rot][2]
-            dy = self._allowed_sup_actions[act][0] * self._angle_dir[rot][1] \
-                 + self._allowed_sup_actions[act][1] * self._angle_dir[rot][3]
+            det_fwd = self._allowed_sup_actions[act][0] * self.move_sensitivity
+            det_hor = self._allowed_sup_actions[act][1] * self.move_sensitivity
+            dx = det_fwd * self._angle_dir[rot][0] + det_hor * self._angle_dir[rot][2]
+            dy = det_fwd * self._angle_dir[rot][1] + det_hor * self._angle_dir[rot][3]
             dr = self._allowed_sup_actions[act][2]
             if is_rev:
                 dx, dy, dr = -dx, -dy, -dr
