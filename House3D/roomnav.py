@@ -908,8 +908,13 @@ class RoomNavTask(gym.Env):
     ###################
     # DEBUG USE
     ###################
-    def _sanity_check_supervised_plan(self, info, actions):
-        print('Sanity Checking ....')
+    def _sanity_check_supervised_plan(self, info, actions, logger=None):
+        def logstr(str):
+            if logger is None:
+                print(str)
+            else:
+                logger.print(str)
+        logstr('Sanity Checking ....')
         # init birth state
         if info['house_id'] != self.info['house_id']:
             self.env.reset_house(info['house_id'])
@@ -928,9 +933,9 @@ class RoomNavTask(gym.Env):
                 flag_done = reward > 4
                 flag_full = (i == n - 1)
                 break
-        print('  >> Finished!')
-        print('    -> Total Input Actions = {}'.format(n))
-        print('    -> Accu Rew = {}'.format(accu_reward))
-        print('    -> Success = {}'.format(flag_done))
-        print('    -> Terminate in the last step = {}'.format(flag_full))
+        logstr('  >> Finished!')
+        logstr('    -> Total Input Actions = {}'.format(n))
+        logstr('    -> Accu Rew = {}'.format(accu_reward))
+        logstr('    -> Success = {}'.format(flag_done))
+        logstr('    -> Terminate in the last step = {}'.format(flag_full))
         return flag_done and flag_full
