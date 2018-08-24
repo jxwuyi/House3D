@@ -926,7 +926,11 @@ class House(_BaseHouse):
         # get destination range boxes
         targetRegions = \
             [_get_valid_expansion(x1, y1, x2, y2, self.objTargetRange) for x1, y1, x2, y2 in targetObjects]
-        assert (len(targetRegions) > 0), '[House-For-DataGen] no desired objects for target <{}> in the current house!'.format(targetRoomTp)
+        if len(targetRegions) == 0:
+            print('[House-For-DataGen] Warning!! no desired objects for target <{}> in the current house!'.format(targetRoomTp))
+            del targetRooms
+            del targetObjects
+            return False
 
         ###############################
         # generate destination mask map
