@@ -861,6 +861,76 @@ class House(_BaseHouse):
         dist = self._get_target_plan_dist(cx, cy, plan)
         return [(p, d) for p, d in zip(plan, dist)]
 
+    #######################
+    # FOR Data-Gen
+    #######################
+    def _genObjDistForTargetRoom(self, targetRoomTp, targetObjList):
+        targetRoomTp = targetRoomTp.lower()
+        if (targetRoomTp not in ALLOWED_TARGET_ROOM_TYPES) or (targetRoomTp == 'outdoor'):
+            return False
+        if (len(targetObjList) == 0) or any([o not in ALLOWED_OBJECT_TARGET_TYPES for o in targetObjList]):
+            return False
+        current_tag = targetRoomTp + '-obj'
+
+        def check_obj_inside_room(obj_box, room):
+            x1, y1, x2, y2 = obj_box
+            cx = 0.5 * (x1 + x2)
+            cy = 0.5 * (y1 + y2)
+            flag_inside = (x1 < room[1]) and (x2 > room[0]) and (y1 < room[3]) and (y2 > room[2]) and \
+                (cx > room[0]) and (cx < room[1]) and (cy > room[2]) and (cy < room[3])
+            if not flag_inside:
+                return None
+            return max(x1, room[0]), min(x2, room[1]), max(y1, room[2]), min(y2, room[3])
+
+        def _get_valid_expansion(x1, y1, x2, y2, rg):
+            cx, cy = (x1 + x2) * 0.5, (y1 + y2) * 0.5
+            covered_rooms = \
+                [(room['bbox']['min'][0], room['bbox']['min'][2], room['bbox']['max'][0], room['bbox']['max'][2])
+                 for room in self.all_rooms if (room['bbox']['min'][0] < cx) and (room['bbox']['min'][2] < y1) \
+                 and (room['bbox']['max'][0] > cx) and (room['bbox']['max'][2] > cy)]
+            x_lo, y_lo, x_hi, y_hi = self.L_lo, self.L_lo, self.L_hi, self.L_hi
+            for rx1, ry1, rx2, ry2 in covered_rooms:
+                x_lo = max(x_lo, rx1)
+                y_lo = max(y_lo, ry1)
+                x_hi = min(x_hi, rx2)
+                y_hi = min(y_hi, ry2)
+            x_lo = max(x_lo, x1 - rg)
+            y_lo = max(y_lo, y1 - rg)
+            x_hi = min(x_hi, x2 + rg)
+            y_hi = min(y_hi, y2 + rg)
+            return (x_lo, y_lo, x_hi, y_hi)
+
+        targetRooms = \
+            [(room['bbox']['min'][0], room['bbox']['min'][2], room['bbox']['max'][0], room['bbox']['max'][2])
+             for room in self.all_rooms if any([_equal_room_tp(tp, targetRoomTp) for tp in room['roomTypes']])]
+
+        targetObjects = []
+        for o in targetObjList:  # enumerate all the object types belonging to the target room
+            cur_objs = self.tar_obj_region[o]   # enumerate all the objects for type o
+            for obj in cur_objs:
+                for r in targetRooms:
+                    shrk_obj = check_obj_inside_room(obj, r)
+                    if shrk_obj is not None:
+                        targetObjects.append(shrk_obj)
+
+        ################################
+        # get destination range boxes
+        targetRegions = \
+            [_get_valid_expansion(x1, y1, x2, y2, self.objTargetRange) for x1, y1, x2, y2 in targetObjects]
+        assert (len(targetRegions) > 0), '[House-For-DataGen] no desired objects for target <{}> in the current house!'.format(targetRoomTp)
+
+        ###############################
+        # generate destination mask map
+        print('[House-For-DataGen] Caching New ConnMap for Tag <{}>! (total {} obj-region involved)'.format(current_tag,
+                                                                                              len(targetRegions)))
+        # compute shortest distance
+        okay_flag = self._genShortestDistMap(targetRegions, current_tag)
+        if not okay_flag:
+            print("[House-For-DataGen] Error Occured for Tag {}!".format(current_tag))
+        del targetRooms
+        del targetObjects
+        del targetRegions
+        return okay_flag
 
     #######################
     # DEBUG functionality #

@@ -749,6 +749,20 @@ class RoomNavTask(gym.Env):
         assert len(self._angle_dir) == n_discrete_angles
         assert self.discrete_angle == n_discrete_angles
 
+        if not hasattr(self, '_flag_cached_objdist'):
+            self._flag_cached_objdist = dict()
+
+        # prepare heuristic function distance map
+        cached_key = (self.env.info['house_id'], self.house.targetRoomTp)
+        if cached_key not in self._flag_cached_objdist:
+            flag_okay = self.house._genObjDistForTargetRoom(self.house.targetRoomTp, self.room_target_object[self.house.targetRoomTp])
+            if flag_okay:
+                self._flag_cached_objdist[cached_key] = self.house.targetRoomTp + '-obj'
+            else:
+                self._flag_cached_objdist[cached_key] = self.house.targetRoomTp
+        h_func_map_tag = self._flag_cached_objdist[cached_key]
+
+
         if birth_state is None:
             birth_cx, birth_cy = self.env.info['loc']
             birth_rot_ind = self.info['_yaw_ind']
@@ -761,7 +775,7 @@ class RoomNavTask(gym.Env):
         birth_rot_ind %= n_discrete_angles
         def h_func(cx, cy):
             gx, gy = self.house.to_grid(cx, cy)
-            dist = self.house.connMap[gx, gy]
+            dist = self.house.targetDist(h_func_map_tag, gx, gy)
             return self.house.getOptSteps(dist, self.move_sensitivity)
 
         opt = {}
@@ -828,7 +842,7 @@ class RoomNavTask(gym.Env):
                     h_val = h_func(next[0], next[1])  # A* heuristic function
                     heapq.heappush(hp, (cur_step + 1 + h_val, cur_step + 1, next))
                     st_cnt += 1
-        assert flag_found, '[RoomNav] Gen_Supervised_Plan Error!! Not Available Plan Found! Birth = {}, target = <{}>'.format((birth_cx, birth_cy, birth_rot), self.house.targetRoomTp)
+        assert flag_found, '[RoomNav] Gen_Supervised_Plan Error!! Not Available Plan Found! Birth = {}, target = <{}>'.format((birth_cx, birth_cy, birth_rot_ind), self.house.targetRoomTp)
 
         print('Path Found!!!')
 
