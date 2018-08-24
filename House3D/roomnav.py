@@ -301,6 +301,7 @@ class RoomNavTask(gym.Env):
         self.success_stay_cnt = 0
         if 'see' in success_measure:
             self.room_target_object = dict(outdoor=[])  # outdoor is a special category
+            self.room_target_object_names = dict(outdoor=[])
             self._load_target_object_data(self.env.config['roomTargetFile'])
             if self.include_object_target:
                 self._load_target_object_data(self.env.config['objectTargetFile'])
@@ -314,7 +315,9 @@ class RoomNavTask(gym.Env):
                 room = row['target_room']
                 if room not in self.room_target_object:
                     self.room_target_object[room] = []
+                    self.room_target_object_names[room] = []
                 self.room_target_object[room].append(c)
+                self.room_target_object_names[room].append(row['coarse_grained_class'])
 
     """
     reset the target room type to navigate to
@@ -755,12 +758,15 @@ class RoomNavTask(gym.Env):
         # prepare heuristic function distance map
         cached_key = (self.env.info['house_id'], self.house.targetRoomTp)
         if cached_key not in self._flag_cached_objdist:
-            flag_okay = self.house._genObjDistForTargetRoom(self.house.targetRoomTp, self.room_target_object[self.house.targetRoomTp])
+            flag_okay = self.house._genObjDistForTargetRoom(self.house.targetRoomTp, self.room_target_object_names[self.house.targetRoomTp])
             if flag_okay:
                 self._flag_cached_objdist[cached_key] = self.house.targetRoomTp + '-obj'
             else:
                 self._flag_cached_objdist[cached_key] = self.house.targetRoomTp
         h_func_map_tag = self._flag_cached_objdist[cached_key]
+
+
+        print('--> h_func_map_tag = {}'.format(h_func_map_tag))
 
 
         if birth_state is None:
@@ -771,7 +777,7 @@ class RoomNavTask(gym.Env):
             if not isinstance(birth_rot_ind):
                 birth_rot_ind = int(birth_rot_ind + 180 + 1e-10) // discrete_rotation_sensitivity
 
-        prec = 8
+        prec = 10
         birth_rot_ind %= n_discrete_angles
         def h_func(cx, cy):
             gx, gy = self.house.to_grid(cx, cy)
@@ -823,12 +829,15 @@ class RoomNavTask(gym.Env):
             raw_dist = self.house.connMap[gx, gy]
 
             if iters % 100 == 0:
-                print('>>>>>>> current <%d> states expanded!! current step = %d, heuristic = %d' % (iters, cur_step, dat[0]-cur_step))
+                print('>>>>>>> current <%d> states expanded!! current step = %d, heuristic = %d, raw_dist = %d' % (iters, cur_step, dat[0]-cur_step, raw_dist))
 
 
             # set up camera for success checking
             yaw = rot * discrete_rotation_sensitivity - 180.0
             self.env.reset(x=cx, y=cy, yaw=yaw)
+            # clear render cache
+            self.last_obs = None
+            self._cached_seg = None
             if self._is_success(raw_dist, (gx, gy), stop_act) or self.success_stay_cnt > 0:
                 flag_found = True
                 break  # succeed

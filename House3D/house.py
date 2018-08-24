@@ -867,20 +867,23 @@ class House(_BaseHouse):
     def _genObjDistForTargetRoom(self, targetRoomTp, targetObjList):
         targetRoomTp = targetRoomTp.lower()
         if (targetRoomTp not in ALLOWED_TARGET_ROOM_TYPES) or (targetRoomTp == 'outdoor'):
+            print('[House-Data-Gen] Error! Not supported Room Type = {}'.format(targetRoomTp))
             return False
-        if (len(targetObjList) == 0) or any([o not in ALLOWED_OBJECT_TARGET_TYPES for o in targetObjList]):
+        if (len(targetObjList) == 0):
+            print('[House-Data-Gen] Error! Empty TargetObjList for Room Type = {}'.format(targetRoomTp))
             return False
         current_tag = targetRoomTp + '-obj'
 
         def check_obj_inside_room(obj_box, room):
             x1, y1, x2, y2 = obj_box
+            r_x1, r_y1, r_x2, r_y2 = room
             cx = 0.5 * (x1 + x2)
             cy = 0.5 * (y1 + y2)
-            flag_inside = (x1 < room[1]) and (x2 > room[0]) and (y1 < room[3]) and (y2 > room[2]) and \
-                (cx > room[0]) and (cx < room[1]) and (cy > room[2]) and (cy < room[3])
+            flag_inside = (x1 < r_x2) and (x2 > r_x1) and (y1 < r_y2) and (y2 > r_y1) and \
+                (cx > r_x1) and (cx < r_x2) and (cy > r_y1) and (cy < r_y2)
             if not flag_inside:
                 return None
-            return max(x1, room[0]), min(x2, room[1]), max(y1, room[2]), min(y2, room[3])
+            return max(x1, r_x1), max(y1, r_y1), min(x2, r_x2), min(y2, r_y2)
 
         def _get_valid_expansion(x1, y1, x2, y2, rg):
             cx, cy = (x1 + x2) * 0.5, (y1 + y2) * 0.5
@@ -905,7 +908,14 @@ class House(_BaseHouse):
              for room in self.all_rooms if any([_equal_room_tp(tp, targetRoomTp) for tp in room['roomTypes']])]
 
         targetObjects = []
-        for o in targetObjList:  # enumerate all the object types belonging to the target room
+        unique_targetObjList = set()
+        for o in targetObjList:
+            target_cats = _get_object_categories(o)
+            for c in target_cats:
+                if c in self.tar_obj_region:
+                    unique_targetObjList.add(c)
+        print(unique_targetObjList)
+        for o in unique_targetObjList:  # enumerate all the object types belonging to the target room
             cur_objs = self.tar_obj_region[o]   # enumerate all the objects for type o
             for obj in cur_objs:
                 for r in targetRooms:
