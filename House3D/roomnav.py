@@ -765,10 +765,6 @@ class RoomNavTask(gym.Env):
                 self._flag_cached_objdist[cached_key] = self.house.targetRoomTp
         h_func_map_tag = self._flag_cached_objdist[cached_key]
 
-
-        print('--> h_func_map_tag = {}'.format(h_func_map_tag))
-
-
         if birth_state is None:
             birth_cx, birth_cy = self.env.info['loc']
             birth_rot_ind = self.info['_yaw_ind']
@@ -820,6 +816,9 @@ class RoomNavTask(gym.Env):
         iters = 0
         st_cnt = 1
         stop_act = len(allowed_actions_for_supervision)  # index for STOP action
+
+        report_gap = 10000
+
         while len(hp) > 0:
             iters += 1
             dat = heapq.heappop(hp)
@@ -828,7 +827,7 @@ class RoomNavTask(gym.Env):
             gx, gy = self.house.to_grid(cx, cy)
             raw_dist = self.house.connMap[gx, gy]
 
-            if iters % 100 == 0:
+            if iters % report_gap == 0:
                 print('>>>>>>> current <%d> states expanded!! current step = %d, heuristic = %d, raw_dist = %d' % (iters, cur_step, dat[0]-cur_step, raw_dist))
 
 
@@ -852,8 +851,6 @@ class RoomNavTask(gym.Env):
                     heapq.heappush(hp, (cur_step + 1 + h_val, cur_step + 1, next))
                     st_cnt += 1
         assert flag_found, '[RoomNav] Gen_Supervised_Plan Error!! Not Available Plan Found! Birth = {}, target = <{}>'.format((birth_cx, birth_cy, birth_rot_ind), self.house.targetRoomTp)
-
-        print('Path Found!!!')
 
         # Trace Back Shortest Path
         def get_prev_state(raw_cx, raw_cy, rot):

@@ -914,7 +914,6 @@ class House(_BaseHouse):
             for c in target_cats:
                 if c in self.tar_obj_region:
                     unique_targetObjList.add(c)
-        print(unique_targetObjList)
         for o in unique_targetObjList:  # enumerate all the object types belonging to the target room
             cur_objs = self.tar_obj_region[o]   # enumerate all the objects for type o
             for obj in cur_objs:
