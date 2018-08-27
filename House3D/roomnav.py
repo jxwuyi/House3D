@@ -785,7 +785,7 @@ class RoomNavTask(gym.Env):
             if not isinstance(birth_rot_ind):
                 birth_rot_ind = int(birth_rot_ind + 180 + 1e-10) // discrete_rotation_sensitivity
 
-        prec = 10
+        prec = 9
         birth_rot_ind %= n_discrete_angles
         def h_func(cx, cy):
             gx, gy = self.house.to_grid(cx, cy)
