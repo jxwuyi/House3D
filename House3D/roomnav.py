@@ -905,7 +905,7 @@ class RoomNavTask(gym.Env):
             np_frames[i, ...] = self._re_render()
             np_act[i] = a
             if np_mask_feat is not None:
-                np_mask_feat[i, :] = self.env.get_feature_mask()[: mask_feature_dim]
+                np_mask_feat[i, :] = self.get_feature_mask()[: mask_feature_dim]
         ret_data = [np_frames, np_act]
         if np_mask_feat is not None:
             ret_data.append(np_mask_feat)
