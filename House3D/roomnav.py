@@ -611,7 +611,7 @@ class RoomNavTask(gym.Env):
                 det_dist = np.clip(det_dist, -indicator_reward, indicator_reward)
                 reward += det_dist
                 if raw_dist >= orig_raw_dist: reward -= self.timePenalty
-            elif self.reward_type in 'new':
+            elif 'new' in self.reward_type:
                 # utilize delta reward but with different parameters
                 delta_raw_dist = orig_raw_dist - raw_dist
                 ratio = self.move_sensitivity / self.house.grid_det
