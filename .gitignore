@@ -54,3 +54,6 @@ glew.pc
 
 # tmp storage
 sandbox/_storage/*
+sandbox/storage/*
+sandbox/*.txt
+sandbox/*.json
