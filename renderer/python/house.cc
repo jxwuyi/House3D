@@ -347,6 +347,7 @@ vector<string> BaseHouse::_compute_target_plan(double cx, double cy, const strin
     if (cur_dist[i] < 0) continue;
     int t_steps = cur_steps[i] + 1;
     for(int j=0;j<n_target;++j) {
+      if (targetDistGraph[i][j] < 0) continue;
       int t_dist = targetDistGraph[i][j] + cur_dist[i];
       if (cur_dist[j] < 0 || cur_dist[j] > t_dist
          || (cur_dist[j] == t_dist && cur_steps[j] > t_steps)) {
