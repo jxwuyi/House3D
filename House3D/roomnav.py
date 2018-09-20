@@ -500,12 +500,12 @@ class RoomNavTask(gym.Env):
     """
     return 0/1 binary mask, indicating the target pixels
     """
-    def _gen_target_mask(self):
+    def _gen_target_mask(self, seg_frame=None):
         if self._cached_mask is None:
             self._cached_mask = np.zeros((self.resolution[1],self.resolution[0],1), dtype=np.uint8)
         else:
             self._cached_mask[:, :] = 0
-        seg_obs = self._fetch_cached_segmentation()
+        seg_obs = self._fetch_cached_segmentation() if seg_frame is None else seg_frame
         object_color_list = self.room_target_object[self.house.targetRoomTp]
         for c in object_color_list:
             self._cached_mask[np.all(seg_obs==c, axis=2),:]=250   # NOTE: when processed by NN, image will be scaled
