@@ -385,13 +385,15 @@ class RoomNavTask(gym.Env):
                     target_mask_signal=self.target_mask_signal,
                     joint_visual_signal=self.joint_visual_signal)
 
-    def _re_render(self):
+    def _re_render(self, store_cache=True):
         # generate state
-        self._cached_seg = None
-        self.last_obs = self.env.render()
+        ret_obs = self.env.render()
+        if store_cache:
+            self._cached_seg = ret_obs if self.segment_input else None
         if self.joint_visual_signal:
-            self.last_obs = np.concatenate([self.env.render(mode='rgb'), self.last_obs], axis=-1)
-        ret_obs = self.last_obs
+            ret_obs = np.concatenate([self.env.render(mode='rgb'), ret_obs], axis=-1)
+        if store_cache:
+            self.last_obs = ret_obs
         if self.depth_signal:
             dep_sig = self.env.render(mode='depth')
             if dep_sig.shape[-1] > 1:
@@ -399,8 +401,25 @@ class RoomNavTask(gym.Env):
             ret_obs = np.concatenate([ret_obs, dep_sig], axis=-1)
         if self.target_mask_signal:
             ret_obs = np.concatenate([ret_obs, self._gen_target_mask()], axis=-1)
-        self._cached_obs = ret_obs
+        if store_cache: self._cached_obs = ret_obs
         return ret_obs
+
+    def _render_panoramic(self, n_frames=4, return_numpy=False):
+        assert (self.discrete_angle % n_frames) == 0
+        rot_det = self.discrete_angle // n_frames
+        info = self.env.info
+        orig_x, orig_y = info['loc']
+        orig_yaw = info['yaw']
+        frames = []
+        for i in range(n_frames):
+            cur_yaw = (i * rot_det * rotation_sensitivity + orig_yaw) % 360
+            self.env.reset(x=orig_x, y=orig_y, yaw=cur_yaw)
+            frames.append(self._re_render(store_cache=False))
+        self.env.reset(x=orig_x, y=orig_y, yaw=orig_yaw)
+        if return_numpy:
+            return np.stack(frames)
+        else:
+            return frames
 
     """
     gym api: reset function
@@ -481,12 +500,12 @@ class RoomNavTask(gym.Env):
     """
     return 0/1 binary mask, indicating the target pixels
     """
-    def _gen_target_mask(self):
+    def _gen_target_mask(self, seg_frame=None):
         if self._cached_mask is None:
             self._cached_mask = np.zeros((self.resolution[1],self.resolution[0],1), dtype=np.uint8)
         else:
             self._cached_mask[:, :] = 0
-        seg_obs = self._fetch_cached_segmentation()
+        seg_obs = self._fetch_cached_segmentation() if seg_frame is None else seg_frame
         object_color_list = self.room_target_object[self.house.targetRoomTp]
         for c in object_color_list:
             self._cached_mask[np.all(seg_obs==c, axis=2),:]=250   # NOTE: when processed by NN, image will be scaled
@@ -552,8 +571,8 @@ class RoomNavTask(gym.Env):
                 print('Move Successfully!')
 
         # generate observation
-        self._cached_seg = None
         self.last_obs = obs = self.env.render()
+        self._cached_seg = obs if self.segment_input else None
         if self.joint_visual_signal:
             self.last_obs = obs = np.concatenate([self.env.render(mode='rgb'), obs], axis=-1)
         if self.depth_signal:
