@@ -526,7 +526,7 @@ class RoomNavTask(gym.Env):
         object_color_list = self.room_target_object[self.house.targetRoomTp]
         flag_see_target_objects = (len(object_color_list) == 0)
         if self._cached_mask is not None:
-            self._object_cnt = np.sum(self._cached_mask)
+            self._object_cnt = np.sum(self._cached_mask > 0)
             if self._object_cnt >= n_pixel_for_object_see:
                 flag_see_target_objects = True
         else:
