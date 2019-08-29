@@ -6,6 +6,7 @@
 //File: render.hh
 
 #pragma once
+#define GLM_ENABLE_EXPERIMENTAL
 #include <string>
 #include <memory>
 #include <utility>
