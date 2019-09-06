@@ -2,7 +2,7 @@
 This version is **_much faster_** and consumes **_orders of magnitudes less memory_**.
 It is developed for our ICCV2019 project, *[Bayesian Relational Memory for Semantic Visual Navigation](https://github.com/jxwuyi/HouseNavAgent/)*. Please cite our ICCV paper for using the code. 
 
-See comments for APIs and arguments of the updated [House class](https://github.com/jxwuyi/House3D/blob/C%2B%2B/House3D/house.py#L134) and [RoomNavTask class](https://github.com/jxwuyi/House3D/blob/C%2B%2B/House3D/roomnav.py#L118). They are both back-compatible.
+See comments for APIs and arguments of the updated [House class](https://github.com/jxwuyi/House3D/blob/C%2B%2B/House3D/house.py#L134) and [RoomNavTask class](https://github.com/jxwuyi/House3D/blob/C%2B%2B/House3D/roomnav.py#L118). They are both backward-compatible.
 
 #
 
