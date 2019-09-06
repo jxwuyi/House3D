@@ -1,3 +1,10 @@
+# This is a customized, C++ reimplementation of House3D
+This version is **_much faster_** and consumes **_orders of magnitudes less memory_**.
+It is developed for our ICCV paper, *[Bayesian Relational Memory for Semantic Visual Navigation](https://github.com/jxwuyi/HouseNavAgent/)*. Please cite our ICCV paper for using this project. 
+
+#
+
+
 # House3D: A Rich and Realistic 3D Environment
 #### [Yi Wu](https://jxwuyi.weebly.com/), [Yuxin Wu](https://github.com/ppwwyyxx), [Georgia Gkioxari](https://gkioxari.github.io/) and [Yuandong Tian](http://yuandong-tian.com/)
 *For questions regarding House3D contact Yuxin Wu*
