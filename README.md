@@ -1,4 +1,4 @@
-# This is a customized, C++ reimplementation of House3D
+# This is a C++ re-implementation of House3D
 This version is **_much faster_** and consumes **_orders of magnitudes less memory_**.
 It is developed for our ICCV2019 project, *[Bayesian Relational Memory for Semantic Visual Navigation](https://github.com/jxwuyi/HouseNavAgent/)*. Please cite our ICCV paper for using the code. 
 
